@@ -1,0 +1,154 @@
+#ifndef RSVP_PROTOCOL_H
+#define RSVP_PROTOCOL_H
+
+#include <stdint.h>
+#include <netinet/in.h>
+
+/* RSVP Message Types (RFC 2205) */
+#define RSVP_MSG_PATH       1
+#define RSVP_MSG_RESV       2
+#define RSVP_MSG_PATHERR    3
+#define RSVP_MSG_RESVERR    4
+#define RSVP_MSG_PATHTEAR   5
+#define RSVP_MSG_RESVTEAR   6
+#define RSVP_MSG_RESVCONF   7
+#define RSVP_MSG_SREFRESH   15  /* RFC 2961 */
+
+/* RSVP Object Classes (RFC 2205 / 3209) */
+#define RSVP_CLASS_SESSION         1
+#define RSVP_CLASS_HOP             3
+#define RSVP_CLASS_INTEGRITY       4
+#define RSVP_CLASS_TIME_VALUES     5
+#define RSVP_CLASS_ERROR_SPEC      6
+#define RSVP_CLASS_SCOPE           7
+#define RSVP_CLASS_STYLE           8
+#define RSVP_CLASS_FLOWSPEC        9
+#define RSVP_CLASS_FILTER_SPEC     10
+#define RSVP_CLASS_SENDER_TEMPLATE 11
+#define RSVP_CLASS_SENDER_TSPEC    12
+#define RSVP_CLASS_ADSPEC          13
+#define RSVP_CLASS_LABEL           16
+#define RSVP_CLASS_LABEL_REQUEST   19
+#define RSVP_CLASS_EXPLICIT_ROUTE  20
+#define RSVP_CLASS_RECORD_ROUTE    21
+#define RSVP_CLASS_SESSION_ATTRIB  207
+
+/* ERO Subobjects (RFC 3209) */
+#define RSVP_ERO_IPV4  1
+
+struct rsvp_ero_ipv4_subobj {
+    uint8_t        type; /* Bit 7: Loose/Strict, Bits 0-6: Type */
+    uint8_t        length;
+    struct in_addr addr;
+    uint8_t        prefix_len;
+    uint8_t        res;
+} __attribute__((packed));
+
+/* Common Header (RFC 2205) */
+struct rsvp_common_hdr {
+    uint8_t  ver_flags;    /* Version (4 bits) | Flags (4 bits) */
+    uint8_t  msg_type;
+    uint16_t checksum;
+    uint8_t  ttl;
+    uint8_t  reserved;
+    uint16_t length;
+} __attribute__((packed));
+
+/* Object Header (RFC 2205) */
+struct rsvp_obj_hdr {
+    uint16_t length;
+    uint8_t  class_num;
+    uint8_t  c_type;
+} __attribute__((packed));
+
+/* TIME_VALUES Object (RFC 2205) */
+struct rsvp_time_values {
+    uint32_t refresh_ms;
+} __attribute__((packed));
+
+/* ERROR_SPEC Object - IPv4 (RFC 2205) */
+struct rsvp_error_spec_ipv4 {
+    struct in_addr error_node;
+    uint8_t        flags;
+    uint8_t        error_code;
+    uint16_t       error_value;
+} __attribute__((packed));
+
+/* LABEL_REQUEST Object (RFC 3209) */
+struct rsvp_label_request {
+    uint16_t reserved;
+    uint16_t l3pid;
+} __attribute__((packed));
+
+/* RSVP Message lengths and constants */
+#define RSVP_VERSION 1
+#define RSVP_HER_LEN sizeof(struct rsvp_common_hdr)
+#define RSVP_OBJ_HDR_LEN sizeof(struct rsvp_obj_hdr)
+
+/* Helper macros for buffer manipulation */
+#define RSVP_ALIGN(len) (((len) + 3) & ~3)
+
+/* Session Object - LSP_TUNNEL_IPv4 (RFC 3209) */
+struct rsvp_session_ipv4 {
+    struct in_addr dest_addr;
+    uint16_t       reserved;
+    uint16_t       tunnel_id;
+    struct in_addr extended_tunnel_id;
+} __attribute__((packed));
+
+/* Session Object - LSP_TUNNEL_IPv6 (RFC 3209) */
+struct rsvp_session_ipv6 {
+    struct in6_addr dest_addr;
+    uint16_t        reserved;
+    uint16_t        tunnel_id;
+    struct in6_addr extended_tunnel_id;
+} __attribute__((packed));
+
+/* RSVP HOP Object - IPv4 (RFC 2205) */
+struct rsvp_hop_ipv4 {
+    struct in_addr neighbor_addr;
+    uint32_t       logical_interface;
+} __attribute__((packed));
+
+/* RSVP HOP Object - IPv6 (RFC 2205) */
+struct rsvp_hop_ipv6 {
+    struct in6_addr neighbor_addr;
+    uint32_t        logical_interface;
+} __attribute__((packed));
+
+/* Sender Template / Filter Spec - LSP_TUNNEL_IPv4 (RFC 3209) */
+struct rsvp_sender_ipv4 {
+    struct in_addr source_addr;
+    uint16_t       reserved;
+    uint16_t       lsp_id;
+} __attribute__((packed));
+
+/* Sender Template / Filter Spec - LSP_TUNNEL_IPv6 (RFC 3209) */
+struct rsvp_sender_ipv6 {
+    struct in6_addr source_addr;
+    uint16_t        reserved;
+    uint16_t        lsp_id;
+} __attribute__((packed));
+
+/* Sender TSpec Object (RFC 2205) - IntServ version */
+struct rsvp_sender_tspec {
+    uint8_t  version;
+    uint8_t  reserved;
+    uint16_t length;
+    /* Parameter list follows... for now just the header */
+} __attribute__((packed));
+
+/* AdSpec Object (RFC 2205) */
+struct rsvp_adspec {
+    uint8_t  version;
+    uint8_t  reserved;
+    uint16_t length;
+    /* Parameter list follows... */
+} __attribute__((packed));
+
+/* Label Object - IPv4 (RFC 3209) */
+struct rsvp_label_ipv4 {
+    uint32_t label; /* 20 bits label, 3 bits EXP, 1 bit S, 8 bits TTL */
+} __attribute__((packed));
+
+#endif /* RSVP_PROTOCOL_H */
