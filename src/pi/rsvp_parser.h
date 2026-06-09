@@ -29,6 +29,8 @@ struct rsvp_message_info {
     size_t                       ero_len;
     struct rsvp_label_ipv4      *label;
     struct rsvp_label_request   *label_req;
+    struct rsvp_session_attribute *sess_attr;
+    char                         lsp_name[256];
 };
 
 /**

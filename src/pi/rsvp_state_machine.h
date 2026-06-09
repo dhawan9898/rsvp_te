@@ -9,8 +9,8 @@
 void rsvp_handle_message(struct rsvp_message_info *info);
 
 /**
- * Manually initiate a PATH message (Ingress role).
+ * Initiate a new PATH message for an LSP.
  */
-void rsvp_initiate_path(struct in_addr *dest, uint16_t tunnel_id, struct in_addr *next_hop);
+void rsvp_initiate_path(struct in_addr *src, struct in_addr *dest, uint16_t tunnel_id, const char *lsp_name);
 
 #endif /* RSVP_STATE_MACHINE_H */

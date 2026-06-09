@@ -9,6 +9,25 @@
 #include "pi/rsvp_state_machine.h"
 #include <arpa/inet.h>
 
+#define MAX_TUNNELS 65536
+static uint8_t tunnel_bitmap[MAX_TUNNELS / 8] = {0};
+
+static uint16_t allocate_tunnel_id(void) {
+    static uint16_t next_id = 1;
+    uint16_t start_id = next_id;
+    do {
+        if (!(tunnel_bitmap[next_id / 8] & (1 << (next_id % 8)))) {
+            tunnel_bitmap[next_id / 8] |= (1 << (next_id % 8));
+            uint16_t id = next_id++;
+            if (next_id == 0) next_id = 1;
+            return id;
+        }
+        next_id++;
+        if (next_id == 0) next_id = 1;
+    } while (next_id != start_id);
+    return 0; /* Full */
+}
+
 int main(int argc, char *argv[]) {
     printf("Starting RSVP-TE Daemon...\n");
 
@@ -22,11 +41,20 @@ int main(int argc, char *argv[]) {
     }
 
     if (argc >= 4) {
-        struct in_addr dest, next_hop;
-        uint16_t tunnel_id = atoi(argv[2]);
-        inet_aton(argv[1], &dest);
-        inet_aton(argv[3], &next_hop);
-        rsvp_initiate_path(&dest, tunnel_id, &next_hop);
+        struct in_addr src, dest;
+        const char *lsp_name = argv[3];
+        inet_aton(argv[1], &src);
+        inet_aton(argv[2], &dest);
+        
+        uint16_t tunnel_id = allocate_tunnel_id();
+        if (tunnel_id == 0) {
+            fprintf(stderr, "No available tunnel IDs!\n");
+            return EXIT_FAILURE;
+        }
+        rsvp_initiate_path(&src, &dest, tunnel_id, lsp_name);
+    } else if (argc > 1) {
+        fprintf(stderr, "Usage: %s <src_ip> <dest_ip> <lsp_name>\n", argv[0]);
+        return EXIT_FAILURE;
     }
 
     printf("RSVP-TE Daemon initialized. Entering main loop...\n");

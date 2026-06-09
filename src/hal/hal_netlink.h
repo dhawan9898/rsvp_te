@@ -29,4 +29,9 @@ int hal_netlink_get_local_addr(int ifindex, struct in_addr *addr);
  */
 int hal_netlink_get_egress_if(struct in_addr *dest, struct in_addr *next_hop);
 
+/**
+ * Check if the given address is a local interface address.
+ */
+bool hal_netlink_is_local_addr(struct in_addr *addr);
+
 #endif /* HAL_NETLINK_H */

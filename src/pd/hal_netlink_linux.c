@@ -83,19 +83,108 @@ void hal_netlink_process(void) {
     }
 }
 
+#include <ifaddrs.h>
+#include <net/if.h>
+
 int hal_netlink_get_local_addr(int ifindex, struct in_addr *addr) {
-    int idx = ifindex % MAX_INTERFACES;
-    if (ifaces[idx].active && ifaces[idx].ifindex == ifindex) {
-        *addr = ifaces[idx].addr;
-        return 0;
+    struct ifaddrs *ifaddr, *ifa;
+    if (getifaddrs(&ifaddr) == -1) {
+        return -1;
     }
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL) continue;
+        if (ifa->ifa_addr->sa_family == AF_INET) {
+            if ((int)if_nametoindex(ifa->ifa_name) == ifindex) {
+                struct sockaddr_in *s4 = (struct sockaddr_in *)ifa->ifa_addr;
+                *addr = s4->sin_addr;
+                freeifaddrs(ifaddr);
+                return 0;
+            }
+        }
+    }
+    freeifaddrs(ifaddr);
     return -1;
 }
 
+bool hal_netlink_is_local_addr(struct in_addr *addr) {
+    struct ifaddrs *ifaddr, *ifa;
+    if (getifaddrs(&ifaddr) == -1) {
+        return false;
+    }
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL) continue;
+        if (ifa->ifa_addr->sa_family == AF_INET) {
+            struct sockaddr_in *s4 = (struct sockaddr_in *)ifa->ifa_addr;
+            if (s4->sin_addr.s_addr == addr->s_addr) {
+                freeifaddrs(ifaddr);
+                return true;
+            }
+        }
+    }
+    freeifaddrs(ifaddr);
+    return false;
+}
+
 int hal_netlink_get_egress_if(struct in_addr *dest, struct in_addr *next_hop) {
-    /* Simplified route lookup: for now, assume we can find it or just return a default */
-    /* In a real implementation, we'd send RTM_GETROUTE to the kernel */
-    (void)dest;
-    (void)next_hop;
-    return 1; /* Mock ifindex 1 */
+    struct {
+        struct nlmsghdr nlh;
+        struct rtmsg rtm;
+        char buf[256];
+    } req;
+
+    memset(&req, 0, sizeof(req));
+    req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+    req.nlh.nlmsg_flags = NLM_F_REQUEST;
+    req.nlh.nlmsg_type = RTM_GETROUTE;
+    req.rtm.rtm_family = AF_INET;
+    req.rtm.rtm_dst_len = 32;
+
+    struct rtattr *rta = (struct rtattr *)(((char *)&req) + NLMSG_ALIGN(req.nlh.nlmsg_len));
+    rta->rta_type = RTA_DST;
+    rta->rta_len = RTA_LENGTH(4);
+    memcpy(RTA_DATA(rta), &dest->s_addr, 4);
+    req.nlh.nlmsg_len = NLMSG_ALIGN(req.nlh.nlmsg_len) + RTA_LENGTH(4);
+
+    int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+    if (sock < 0) return -1;
+
+    struct sockaddr_nl sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.nl_family = AF_NETLINK;
+
+    if (sendto(sock, &req, req.nlh.nlmsg_len, 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+        close(sock);
+        return -1;
+    }
+
+    char reply[4096];
+    ssize_t len = recv(sock, reply, sizeof(reply), 0);
+    close(sock);
+
+    if (len < 0) return -1;
+
+    struct nlmsghdr *nh = (struct nlmsghdr *)reply;
+    if (nh->nlmsg_type == NLMSG_ERROR) return -1;
+
+    if (nh->nlmsg_type == RTM_NEWROUTE) {
+        struct rtmsg *rtm = NLMSG_DATA(nh);
+        int rta_len = IFA_PAYLOAD(nh);
+        struct rtattr *rtAttr = RTM_RTA(rtm);
+        int ifindex = -1;
+
+        memset(next_hop, 0, sizeof(struct in_addr));
+        /* Default to direct connection (next_hop = dest) unless a gateway is found */
+        *next_hop = *dest;
+
+        for (; RTA_OK(rtAttr, rta_len); rtAttr = RTA_NEXT(rtAttr, rta_len)) {
+            if (rtAttr->rta_type == RTA_OIF) {
+                ifindex = *(int *)RTA_DATA(rtAttr);
+            } else if (rtAttr->rta_type == RTA_GATEWAY) {
+                memcpy(&next_hop->s_addr, RTA_DATA(rtAttr), 4);
+            }
+        }
+        return ifindex;
+    }
+
+    return -1;
 }

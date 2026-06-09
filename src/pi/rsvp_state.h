@@ -51,6 +51,7 @@ struct rsvp_rsb {
     
     /* State Management */
     uint32_t             cleanup_timer_id;
+    uint32_t             refresh_timer_id;
     uint32_t             hal_handle; /* Handle to programmed HW state */
     
     /* Chaining */

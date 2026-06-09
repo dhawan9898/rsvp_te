@@ -38,7 +38,7 @@ int rsvp_builder_add_session_ipv4(struct rsvp_builder *b, struct in_addr *dest, 
     sess.dest_addr = *dest;
     sess.tunnel_id = tunnel_id;
     sess.extended_tunnel_id = *ext_tunnel_id;
-    return rsvp_builder_add_obj(b, RSVP_CLASS_SESSION, 1, &sess, sizeof(sess));
+    return rsvp_builder_add_obj(b, RSVP_CLASS_SESSION, 7, &sess, sizeof(sess));
 }
 
 int rsvp_builder_add_session_ipv6(struct rsvp_builder *b, struct in6_addr *dest, uint16_t tunnel_id, struct in6_addr *ext_tunnel_id) {
@@ -47,7 +47,30 @@ int rsvp_builder_add_session_ipv6(struct rsvp_builder *b, struct in6_addr *dest,
     sess.dest_addr = *dest;
     sess.tunnel_id = tunnel_id;
     sess.extended_tunnel_id = *ext_tunnel_id;
-    return rsvp_builder_add_obj(b, RSVP_CLASS_SESSION, 2, &sess, sizeof(sess));
+    return rsvp_builder_add_obj(b, RSVP_CLASS_SESSION, 8, &sess, sizeof(sess));
+}
+
+int rsvp_builder_add_session_attribute(struct rsvp_builder *b, const char *name) {
+    uint8_t buf[256] = {0};
+    struct rsvp_session_attribute *attr = (struct rsvp_session_attribute *)buf;
+    
+    uint8_t name_len = name ? strlen(name) : 0;
+    if (name_len > 200) name_len = 200; /* Safety limit */
+    
+    attr->exclude_any = 0;
+    attr->include_any = 0;
+    attr->include_all = 0;
+    attr->setup_prio = 0; /* Wireshark shows SetupPrio 0 */
+    attr->holding_prio = 0; /* Wireshark shows HoldPrio 0 */
+    attr->flags = 0x04; /* Wireshark shows SE Style flag 0x04 */
+    attr->name_length = name_len;
+    
+    if (name_len > 0) {
+        memcpy(attr->name, name, name_len);
+    }
+    
+    size_t obj_len = sizeof(struct rsvp_session_attribute) + name_len;
+    return rsvp_builder_add_obj(b, RSVP_CLASS_SESSION_ATTRIB, 7, attr, obj_len);
 }
 
 int rsvp_builder_add_hop_ipv4(struct rsvp_builder *b, struct in_addr *neighbor, uint32_t logical_intf) {
@@ -68,8 +91,21 @@ int rsvp_builder_add_hop_ipv6(struct rsvp_builder *b, struct in6_addr *neighbor,
 
 int rsvp_builder_add_label_ipv4(struct rsvp_builder *b, uint32_t label) {
     struct rsvp_label_ipv4 lbl;
-    lbl.label = htonl(label);
+    lbl.label = htonl(label << 12);
     return rsvp_builder_add_obj(b, RSVP_CLASS_LABEL, 1, &lbl, sizeof(lbl));
+}
+
+int rsvp_builder_add_label_request(struct rsvp_builder *b, uint16_t l3pid) {
+    struct rsvp_label_request req;
+    req.reserved = 0;
+    req.l3pid = htons(l3pid);
+    return rsvp_builder_add_obj(b, RSVP_CLASS_LABEL_REQUEST, 1, &req, sizeof(req));
+}
+
+int rsvp_builder_add_style(struct rsvp_builder *b, uint32_t style_val) {
+    struct rsvp_style style;
+    style.style = htonl(style_val);
+    return rsvp_builder_add_obj(b, RSVP_CLASS_STYLE, 1, &style, sizeof(style));
 }
 
 int rsvp_builder_add_time_values(struct rsvp_builder *b, uint32_t refresh_ms) {
@@ -86,7 +122,7 @@ int rsvp_builder_add_adspec(struct rsvp_builder *b, struct rsvp_adspec *adspec) 
     return rsvp_builder_add_obj(b, RSVP_CLASS_ADSPEC, 2, adspec, sizeof(*adspec));
 }
 
-static uint16_t rsvp_checksum(uint16_t *buf, int nwords) {
+uint16_t rsvp_checksum(uint16_t *buf, int nwords) {
     uint32_t sum;
     for (sum = 0; nwords > 0; nwords--)
         sum += *buf++;

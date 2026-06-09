@@ -130,13 +130,31 @@ struct rsvp_sender_ipv6 {
     uint16_t        lsp_id;
 } __attribute__((packed));
 
-/* Sender TSpec Object (RFC 2205) - IntServ version */
+/* Sender TSpec Object (RFC 2210) - Full IntServ Token Bucket */
 struct rsvp_sender_tspec {
-    uint8_t  version;
+    uint8_t  version;      /* IntServ version (usually 0) */
     uint8_t  reserved;
-    uint16_t length;
-    /* Parameter list follows... for now just the header */
+    uint16_t length;       /* Overall length in words minus 1 */
+    uint8_t  service_hdr;  /* Service number (e.g. 5 for Controlled-Load) */
+    uint8_t  reserved2;
+    uint16_t svc_length;   /* Length of service data */
+    uint8_t  param_id;     /* Parameter ID (127 for Token Bucket TSpec) */
+    uint8_t  flags;
+    uint16_t param_length; /* Length of parameter data */
+    float    token_bucket_rate; /* Bytes/sec (IEEE floating point) */
+    float    token_bucket_size; /* Bytes */
+    float    peak_data_rate;    /* Bytes/sec */
+    uint32_t min_policed_unit;  /* Bytes */
+    uint32_t max_packet_size;   /* Bytes */
 } __attribute__((packed));
+
+/* Style Object (RFC 2205) */
+struct rsvp_style {
+    uint32_t style; /* Option Vector (24 bits) + Style ID (8 bits) */
+} __attribute__((packed));
+
+#define RSVP_STYLE_FF 10 /* Fixed Filter */
+#define RSVP_STYLE_SE 18 /* Shared Explicit */
 
 /* AdSpec Object (RFC 2205) */
 struct rsvp_adspec {
@@ -149,6 +167,18 @@ struct rsvp_adspec {
 /* Label Object - IPv4 (RFC 3209) */
 struct rsvp_label_ipv4 {
     uint32_t label; /* 20 bits label, 3 bits EXP, 1 bit S, 8 bits TTL */
+} __attribute__((packed));
+
+/* SESSION_ATTRIBUTE Object (RFC 3209) */
+struct rsvp_session_attribute {
+    uint32_t exclude_any;
+    uint32_t include_any;
+    uint32_t include_all;
+    uint8_t  setup_prio;
+    uint8_t  holding_prio;
+    uint8_t  flags;
+    uint8_t  name_length;
+    char     name[]; /* Variable length, padded to 4 bytes */
 } __attribute__((packed));
 
 #endif /* RSVP_PROTOCOL_H */
