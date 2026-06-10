@@ -1,8 +1,10 @@
 #include "hal/hal_netlink.h"
-#include <stdio.h>
+
+#include "common/rsvp_log.h"
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
 #include <sys/socket.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
@@ -39,7 +41,7 @@ int hal_netlink_init(void) {
 
     nl_sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
     if (nl_sock < 0) {
-        perror("socket(AF_NETLINK)");
+        LOG_ERROR("socket(AF_NETLINK): %s", strerror(errno));
         return -1;
     }
 
@@ -48,7 +50,7 @@ int hal_netlink_init(void) {
     sa.nl_groups = RTMGRP_LINK | RTMGRP_IPV4_IFADDR;
 
     if (bind(nl_sock, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-        perror("bind(AF_NETLINK)");
+        LOG_ERROR("bind(AF_NETLINK): %s", strerror(errno));
         close(nl_sock);
         return -1;
     }
@@ -56,7 +58,7 @@ int hal_netlink_init(void) {
     /* Trigger initial dump to populate cache */
     /* (Simplified for now, in a real daemon we'd send RTM_GETADDR) */
 
-    printf("Netlink socket initialized (fd: %d)\n", nl_sock);
+    LOG_INFO("Netlink socket initialized (fd: %d)", nl_sock);
     return 0;
 }
 
@@ -71,7 +73,7 @@ void hal_netlink_process(void) {
 
     len = recv(nl_sock, buf, sizeof(buf), 0);
     if (len < 0) {
-        perror("recv(netlink)");
+        LOG_ERROR("recv(netlink): %s", strerror(errno));
         return;
     }
 
@@ -88,13 +90,13 @@ void hal_netlink_process(void) {
                 if (rta->rta_type == IFA_LOCAL) {
                     int idx = find_iface_slot(ifa->ifa_index);
                     if (idx < 0) {
-                        printf("Netlink: interface cache full, ignoring if %d\n", ifa->ifa_index);
+                        LOG_INFO("Netlink: interface cache full, ignoring if %d", ifa->ifa_index);
                         continue;
                     }
                     ifaces[idx].ifindex = ifa->ifa_index;
                     ifaces[idx].addr = *(struct in_addr *)RTA_DATA(rta);
                     ifaces[idx].active = true;
-                    printf("Netlink: Cache updated for if %d: %s\n",
+                    LOG_INFO("Netlink: Cache updated for if %d: %s",
                            ifa->ifa_index, inet_ntoa(ifaces[idx].addr));
                 }
             }
@@ -212,3 +214,4 @@ int hal_netlink_get_egress_if(struct in_addr *dest, struct in_addr *next_hop) {
 
     return -1;
 }
+

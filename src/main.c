@@ -1,12 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
 #include "pi/rsvp_dispatcher.h"
 #include "pi/rsvp_state_db.h"
 #include "pi/label_mgr.h"
 #include "pi/rsvp_timers.h"
 
 #include "pi/rsvp_state_machine.h"
+#include "common/rsvp_log.h"
 #include <arpa/inet.h>
 
 #define MAX_TUNNELS 65536
@@ -29,35 +31,41 @@ static uint16_t allocate_tunnel_id(void) {
 }
 
 int main(int argc, char *argv[]) {
-    printf("Starting RSVP-TE Daemon...\n");
+    rsvp_set_log_level(LOG_LEVEL_DEBUG);
+    LOG_INFO("Starting RSVP-TE Daemon...");
 
     rsvp_state_db_init();
     label_mgr_init(10000, 20000);
     rsvp_timer_init();
 
     if (rsvp_dispatcher_init() < 0) {
-        fprintf(stderr, "Failed to initialize RSVP dispatcher\n");
+        LOG_ERROR("Failed to initialize RSVP dispatcher");
         return EXIT_FAILURE;
     }
 
     if (argc >= 4) {
         struct in_addr src, dest;
-        const char *lsp_name = argv[3];
+        char lsp_name[256];
+        memset(lsp_name, 0, sizeof(lsp_name));
+        size_t name_len = strlen(argv[3]);
+        if (name_len > 255) name_len = 255;
+        memcpy(lsp_name, argv[3], name_len);
+
         inet_aton(argv[1], &src);
         inet_aton(argv[2], &dest);
         
         uint16_t tunnel_id = allocate_tunnel_id();
         if (tunnel_id == 0) {
-            fprintf(stderr, "No available tunnel IDs!\n");
+            LOG_ERROR("No available tunnel IDs!");
             return EXIT_FAILURE;
         }
         rsvp_initiate_path(&src, &dest, tunnel_id, lsp_name);
     } else if (argc > 1) {
-        fprintf(stderr, "Usage: %s <src_ip> <dest_ip> <lsp_name>\n", argv[0]);
+        LOG_ERROR("Usage: %s <src_ip> <dest_ip> <lsp_name>", argv[0]);
         return EXIT_FAILURE;
     }
 
-    printf("RSVP-TE Daemon initialized. Entering main loop...\n");
+    LOG_INFO("RSVP-TE Daemon initialized. Entering main loop...");
     
     /* For now, just a simple loop or call the dispatcher loop */
     rsvp_dispatcher_run();

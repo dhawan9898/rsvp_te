@@ -3,7 +3,8 @@
 #include "rsvp_state_machine.h"
 #include "hal/hal_netlink.h"
 #include "pi/rsvp_timers.h"
-#include <stdio.h>
+
+#include "common/rsvp_log.h"
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -22,7 +23,7 @@ static int rsvp_raw_sock = -1;
 int rsvp_dispatcher_init(void) {
     rsvp_raw_sock = socket(AF_INET, SOCK_RAW, RSVP_PROTOCOL);
     if (rsvp_raw_sock < 0) {
-        perror("Failed to create raw RSVP socket");
+        LOG_ERROR("Failed to create raw RSVP socket: %s", strerror(errno));
         return -1;
     }
 
@@ -30,7 +31,7 @@ int rsvp_dispatcher_init(void) {
         return -1;
     }
 
-    printf("Raw RSVP socket created (fd: %d)\n", rsvp_raw_sock);
+    LOG_INFO("Raw RSVP socket created (fd: %d)", rsvp_raw_sock);
     return 0;
 }
 
@@ -65,13 +66,13 @@ void rsvp_dispatcher_run(void) {
         int ret = poll(fds, nfds, -1);
         if (ret < 0) {
             if (errno == EINTR) continue;
-            perror("poll");
+            LOG_ERROR("poll: %s", strerror(errno));
             break;
         }
 
         for (int i = 0; i < nfds; i++) {
             if (fds[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-                fprintf(stderr, "poll event error on fd %d: revents=0x%x\n", fds[i].fd, fds[i].revents);
+                LOG_ERROR("poll event error on fd %d: revents=0x%x", fds[i].fd, fds[i].revents);
                 continue;
             }
 
@@ -90,7 +91,7 @@ void rsvp_dispatcher_run(void) {
                             rsvp_handle_message(&info);
                         }
                     } else if (bytes_read < 0 && errno != EINTR) {
-                        perror("recvfrom");
+                        LOG_ERROR("recvfrom: %s", strerror(errno));
                     }
                 } else if (fds[i].fd == hal_netlink_get_fd()) {
                     hal_netlink_process();
@@ -114,10 +115,11 @@ int rsvp_send_packet(struct in_addr *dest, uint8_t *buffer, size_t len) {
     ssize_t bytes_sent = sendto(rsvp_raw_sock, buffer, len, 0,
                                 (struct sockaddr *)&dest_addr, sizeof(dest_addr));
     if (bytes_sent < 0) {
-        perror("sendto error");
+        LOG_ERROR("sendto error: %s", strerror(errno));
         return -1;
     }
 
-    printf("Sent %zd bytes to %s\n", bytes_sent, inet_ntoa(*dest));
+    LOG_INFO("Sent %zd bytes to %s", bytes_sent, inet_ntoa(*dest));
     return 0;
 }
+

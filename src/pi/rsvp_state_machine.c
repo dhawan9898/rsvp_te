@@ -5,7 +5,8 @@
 #include "pi/rsvp_timers.h"
 #include "pi/rsvp_builder.h"
 #include "hal/hal_netlink.h"
-#include <stdio.h>
+
+#include "common/rsvp_log.h"
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
@@ -25,13 +26,13 @@ static void propagate_path_tear(struct rsvp_psb *psb);
 static void propagate_resv_tear(struct rsvp_rsb *rsb);
 
 static void handle_path_message(struct rsvp_message_info *info) {
-    printf("Handling PATH message...\n");
+    LOG_INFO("Handling PATH message...");
     struct rsvp_psb *psb = rsvp_psb_find(&info->key);
     struct in_addr dest;
     bool is_new = (psb == NULL);
 
     if (is_new) {
-        printf("New PATH: creating PSB\n");
+        LOG_INFO("New PATH: creating PSB");
         psb = rsvp_psb_create(&info->key);
         if (!psb) return;
         
@@ -43,7 +44,7 @@ static void handle_path_message(struct rsvp_message_info *info) {
         psb->cleanup_timer_id = rsvp_timer_start(RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, psb_cleanup_timer_cb, psb);
         psb->refresh_timer_id = rsvp_timer_start(RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, psb_refresh_timer_cb, psb);
     } else {
-        printf("Refresh PATH: resetting cleanup timer\n");
+        LOG_INFO("Refresh PATH: resetting cleanup timer");
         rsvp_timer_stop(psb->cleanup_timer_id);
         psb->cleanup_timer_id = rsvp_timer_start(RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, psb_cleanup_timer_cb, psb);
     }
@@ -51,7 +52,7 @@ static void handle_path_message(struct rsvp_message_info *info) {
     dest = info->key.session.dest_addr;
     if (hal_netlink_is_local_addr(&dest)) {
         /* Egress: We are the tail-end. Triggering RESV... */
-        printf("Egress: We are the tail-end. Triggering RESV...\n");
+        LOG_INFO("Egress: We are the tail-end. Triggering RESV...");
         struct rsvp_rsb *rsb = rsvp_rsb_find(&info->key);
         if (!rsb) {
             rsb = rsvp_rsb_create(&info->key);
@@ -62,17 +63,22 @@ static void handle_path_message(struct rsvp_message_info *info) {
             }
         }
     } else {
-        /* Transit node */
+        /* Transit node or Ingress receiving its own packet */
+        if (hal_netlink_is_local_addr(&info->key.sender.source_addr)) {
+            LOG_INFO("Ingress: Received own PATH message back. Dropping to prevent loop.");
+            return;
+        }
+
         struct in_addr next_hop = {0};
         
         int out_ifindex = hal_netlink_get_egress_if(&dest, &next_hop);
         
         if (out_ifindex < 0) {
-            printf("Transit: No route to dest %s. Dropping PATH.\n", inet_ntoa(info->key.session.dest_addr));
+            LOG_INFO("Transit: No route to dest %s. Dropping PATH.", inet_ntoa(info->key.session.dest_addr));
             return;
         }
 
-        printf("Transit: Forwarding PATH downstream to %s (via ifindex %d)...\n", inet_ntoa(next_hop), out_ifindex);
+        LOG_INFO("Transit: Forwarding PATH downstream to %s (via ifindex %d)...", inet_ntoa(next_hop), out_ifindex);
         psb->ifindex_out = out_ifindex;
         
         if (info->hop_v4) {
@@ -87,19 +93,19 @@ static void handle_path_message(struct rsvp_message_info *info) {
             info->common_hdr->ttl--;
         }
         info->common_hdr->checksum = 0;
-        info->common_hdr->checksum = rsvp_checksum((uint16_t *)info->common_hdr, ntohs(info->common_hdr->length) / 2);
+        info->common_hdr->checksum = rsvp_checksum((uint16_t *)info->common_hdr, ntohs(info->common_hdr->length));
         
         rsvp_send_packet(&next_hop, (uint8_t *)info->common_hdr, ntohs(info->common_hdr->length));
     }
 }
 
 static void handle_resv_message(struct rsvp_message_info *info) {
-    printf("Handling RESV message...\n");
+    LOG_INFO("Handling RESV message...");
     struct rsvp_rsb *rsb = rsvp_rsb_find(&info->key);
     bool is_new = false;
 
     if (!rsb) {
-        printf("New RESV: creating RSB\n");
+        LOG_INFO("New RESV: creating RSB");
         rsb = rsvp_rsb_create(&info->key);
         if (!rsb) return;
         is_new = true;
@@ -113,7 +119,7 @@ static void handle_resv_message(struct rsvp_message_info *info) {
         rsb->cleanup_timer_id = rsvp_timer_start(RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, rsb_cleanup_timer_cb, rsb);
         rsb->refresh_timer_id = rsvp_timer_start(RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, rsb_refresh_timer_cb, rsb);
     } else {
-        printf("Refresh RESV: resetting cleanup timer\n");
+        LOG_INFO("Refresh RESV: resetting cleanup timer");
         rsvp_timer_stop(rsb->cleanup_timer_id);
         rsb->cleanup_timer_id = rsvp_timer_start(RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, rsb_cleanup_timer_cb, rsb);
     }
@@ -125,17 +131,17 @@ static void handle_resv_message(struct rsvp_message_info *info) {
     if (is_new) {
         if (rsb->associated_psb && rsb->associated_psb->prev_hop.neighbor_addr.s_addr != 0) {
             rsb->label_in = label_mgr_alloc();
-            printf("Transit: Forwarding RESV upstream to %s (label in: %u, out: %u)\n", 
+            LOG_INFO("Transit: Forwarding RESV upstream to %s (label in: %u, out: %u)", 
                    inet_ntoa(rsb->associated_psb->prev_hop.neighbor_addr), rsb->label_in, rsb->label_out);
             send_resv_upstream(rsb);
         } else {
-            printf("Ingress: Reservation complete for LSP %d\n", ntohs(rsb->key.session.tunnel_id));
+            LOG_INFO("Ingress: Reservation complete for LSP %d", ntohs(rsb->key.session.tunnel_id));
         }
     }
 }
 
 static void handle_path_tear(struct rsvp_message_info *info) {
-    printf("Handling PathTear message...\n");
+    LOG_INFO("Handling PathTear message...");
     struct rsvp_psb *psb = rsvp_psb_find(&info->key);
     if (psb) {
         propagate_path_tear(psb);
@@ -154,7 +160,7 @@ static void handle_path_tear(struct rsvp_message_info *info) {
 }
 
 static void handle_resv_tear(struct rsvp_message_info *info) {
-    printf("Handling ResvTear message...\n");
+    LOG_INFO("Handling ResvTear message...");
     struct rsvp_rsb *rsb = rsvp_rsb_find(&info->key);
     if (rsb) {
         propagate_resv_tear(rsb);
@@ -174,16 +180,16 @@ static void handle_resv_tear(struct rsvp_message_info *info) {
 }
 
 static void handle_path_err(struct rsvp_message_info *info) {
-    printf("Handling PathErr message...\n");
+    LOG_INFO("Handling PathErr message...");
     if (info->error_spec) {
-        printf("PathErr: Code %d, Value %d from node %s\n", 
+        LOG_INFO("PathErr: Code %d, Value %d from node %s", 
                info->error_spec->error_code, info->error_spec->error_value, 
                inet_ntoa(info->error_spec->error_node));
     }
     
     struct rsvp_psb *psb = rsvp_psb_find(&info->key);
     if (psb && psb->prev_hop.neighbor_addr.s_addr != 0) {
-        printf("Propagating PathErr upstream to %s...\n", inet_ntoa(psb->prev_hop.neighbor_addr));
+        LOG_INFO("Propagating PathErr upstream to %s...", inet_ntoa(psb->prev_hop.neighbor_addr));
         struct in_addr prev_addr = psb->prev_hop.neighbor_addr;
         if (info->common_hdr->ttl > 0) {
             info->common_hdr->ttl--;
@@ -195,16 +201,16 @@ static void handle_path_err(struct rsvp_message_info *info) {
 }
 
 static void handle_resv_err(struct rsvp_message_info *info) {
-    printf("Handling ResvErr message...\n");
+    LOG_INFO("Handling ResvErr message...");
     if (info->error_spec) {
-        printf("ResvErr: Code %d, Value %d from node %s\n", 
+        LOG_INFO("ResvErr: Code %d, Value %d from node %s", 
                info->error_spec->error_code, info->error_spec->error_value, 
                inet_ntoa(info->error_spec->error_node));
     }
     
     /* ResvErr propagates downstream toward the egress */
     /* In a real implementation, we'd find the downstream neighbor from the RSB/PSB */
-    printf("Propagating ResvErr downstream...\n");
+    LOG_INFO("Propagating ResvErr downstream...");
 }
 
 void rsvp_handle_message(struct rsvp_message_info *info) {
@@ -228,7 +234,7 @@ void rsvp_handle_message(struct rsvp_message_info *info) {
             handle_resv_err(info);
             break;
         default:
-            printf("Unsupported message type: %d\n", info->common_hdr->msg_type);
+            LOG_INFO("Unsupported message type: %d", info->common_hdr->msg_type);
             break;
     }
 }
@@ -242,7 +248,7 @@ static void send_resv_upstream(struct rsvp_rsb *rsb) {
     if (rsb->label_in == 0) {
         rsb->label_in = label_mgr_alloc();
         if (rsb->label_in == 0) {
-            printf("send_resv_upstream: failed to allocate label_in\n");
+            LOG_INFO("send_resv_upstream: failed to allocate label_in");
             return;
         }
     }
@@ -285,7 +291,7 @@ static void propagate_path_tear(struct rsvp_psb *psb) {
     struct in_addr next_hop = {0};
     int out_ifindex = hal_netlink_get_egress_if(&dest_addr, &next_hop);
     if (out_ifindex < 0) {
-        printf("Propagate PathTear: no route to dest %s\n", inet_ntoa(dest_addr));
+        LOG_INFO("Propagate PathTear: no route to dest %s", inet_ntoa(dest_addr));
         return;
     }
 
@@ -315,11 +321,11 @@ static void propagate_resv_tear(struct rsvp_rsb *rsb) {
     struct in_addr prev_neighbor = prev_hop.neighbor_addr;
 
     if (prev_neighbor.s_addr == 0) {
-        printf("Propagate ResvTear: no upstream neighbor\n");
+        LOG_INFO("Propagate ResvTear: no upstream neighbor");
         return;
     }
 
-    printf("Propagating ResvTear upstream to %s...\n", inet_ntoa(prev_neighbor));
+    LOG_INFO("Propagating ResvTear upstream to %s...", inet_ntoa(prev_neighbor));
 
     uint8_t buf[1024];
     struct rsvp_builder b;
@@ -340,11 +346,11 @@ void rsvp_initiate_path(struct in_addr *src, struct in_addr *dest, uint16_t tunn
 
     int ifindex = hal_netlink_get_egress_if(dest, &next_hop);
     if (ifindex < 0) {
-        printf("Failed to find route to dest %s\n", inet_ntoa(*dest));
+        LOG_INFO("Failed to find route to dest %s", inet_ntoa(*dest));
         return;
     }
 
-    printf("Initiating PATH for tunnel %d (LSP: %s) to %s via %s (ifindex %d)\n", 
+    LOG_INFO("Initiating PATH for tunnel %d (LSP: %s) to %s via %s (ifindex %d)", 
            tunnel_id, lsp_name ? lsp_name : "none", inet_ntoa(*dest), inet_ntoa(next_hop), ifindex);
 
     memset(&key, 0, sizeof(key));
@@ -439,3 +445,4 @@ static void rsb_cleanup_timer_cb(void *arg) {
     if (rsb->label_in != 0) label_mgr_free(rsb->label_in);
     rsvp_rsb_delete(rsb);
 }
+

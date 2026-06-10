@@ -1,7 +1,10 @@
 #include "rsvp_timers.h"
 #include "hal/hal_timer.h"
 #include <stdlib.h>
-#include <stdio.h>
+#include <errno.h>
+#include <string.h>
+
+#include "common/rsvp_log.h"
 #include <unistd.h>
 
 #define MAX_TIMERS 100
@@ -21,7 +24,7 @@ void rsvp_timer_init(void) {
     for (int i = 0; i < MAX_TIMERS; i++) {
         timers[i].active = false;
     }
-    printf("RSVP Timer system initialized\n");
+    LOG_INFO("RSVP Timer system initialized");
 }
 
 uint32_t rsvp_timer_start(rsvp_timer_type_t type, uint32_t timeout_ms, rsvp_timer_cb cb, void *arg) {
@@ -72,9 +75,9 @@ void rsvp_timer_handle_exp(int fd) {
     ssize_t rc = read(fd, &exp, sizeof(exp));
     if (rc != sizeof(exp)) {
         if (rc < 0) {
-            perror("rsvp_timer_handle_exp: read");
+            LOG_ERROR("rsvp_timer_handle_exp: read: %s", strerror(errno));
         } else {
-            fprintf(stderr, "rsvp_timer_handle_exp: short read %zd\n", rc);
+            LOG_ERROR("rsvp_timer_handle_exp: short read %zd", rc);
         }
     }
 
@@ -89,3 +92,4 @@ void rsvp_timer_handle_exp(int fd) {
         }
     }
 }
+

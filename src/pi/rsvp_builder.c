@@ -16,19 +16,20 @@ void rsvp_builder_init(struct rsvp_builder *b, uint8_t *buffer, size_t size, uin
 
 int rsvp_builder_add_obj(struct rsvp_builder *b, uint8_t class_num, uint8_t c_type, void *data, size_t data_len) {
     size_t obj_total_len = sizeof(struct rsvp_obj_hdr) + data_len;
+    size_t aligned_len = RSVP_ALIGN(obj_total_len);
     
-    if (b->offset + obj_total_len > b->size) {
+    if (b->offset + aligned_len > b->size) {
         return -1;
     }
 
     struct rsvp_obj_hdr *obj_hdr = (struct rsvp_obj_hdr *)(b->buffer + b->offset);
-    obj_hdr->length = htons(obj_total_len);
+    obj_hdr->length = htons(aligned_len);
     obj_hdr->class_num = class_num;
     obj_hdr->c_type = c_type;
 
     memcpy(b->buffer + b->offset + sizeof(struct rsvp_obj_hdr), data, data_len);
     
-    b->offset += RSVP_ALIGN(obj_total_len);
+    b->offset += aligned_len;
     return 0;
 }
 
@@ -57,9 +58,6 @@ int rsvp_builder_add_session_attribute(struct rsvp_builder *b, const char *name)
     uint8_t name_len = name ? strlen(name) : 0;
     if (name_len > 200) name_len = 200; /* Safety limit */
     
-    attr->exclude_any = 0;
-    attr->include_any = 0;
-    attr->include_all = 0;
     attr->setup_prio = 0; /* Wireshark shows SetupPrio 0 */
     attr->holding_prio = 0; /* Wireshark shows HoldPrio 0 */
     attr->flags = 0x04; /* Wireshark shows SE Style flag 0x04 */
@@ -171,7 +169,7 @@ size_t rsvp_builder_finalize(struct rsvp_builder *b) {
     b->hdr->checksum = 0;
     
     /* Checksum is calculated over the entire RSVP message */
-    b->hdr->checksum = rsvp_checksum((uint16_t *)b->buffer, b->offset / 2);
+    b->hdr->checksum = rsvp_checksum((uint16_t *)b->buffer, b->offset);
     
     return b->offset;
 }

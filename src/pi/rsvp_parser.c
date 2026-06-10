@@ -145,11 +145,23 @@ int rsvp_parse_packet(uint8_t *buffer, size_t len, struct rsvp_message_info *inf
                 break;
 
             case RSVP_CLASS_SESSION_ATTRIB:
-                if ((obj_hdr->c_type == 1 || obj_hdr->c_type == 7) && obj_len >= sizeof(struct rsvp_session_attribute)) {
+                if (obj_hdr->c_type == 7 && obj_len >= sizeof(struct rsvp_session_attribute)) {
                     info->sess_attr = (struct rsvp_session_attribute *)obj_data;
-                    if (info->sess_attr->name_length > 0 && sizeof(*info->sess_attr) + info->sess_attr->name_length <= obj_len) {
-                        memcpy(info->lsp_name, info->sess_attr->name, info->sess_attr->name_length);
-                        info->lsp_name[info->sess_attr->name_length] = '\0';
+                    if (info->sess_attr->name_length > 0 && 
+                        sizeof(struct rsvp_session_attribute) + info->sess_attr->name_length <= (obj_len - sizeof(struct rsvp_obj_hdr))) {
+                        size_t nlen = info->sess_attr->name_length;
+                        if (nlen >= sizeof(info->lsp_name)) nlen = sizeof(info->lsp_name) - 1;
+                        memcpy(info->lsp_name, info->sess_attr->name, nlen);
+                        info->lsp_name[nlen] = '\0';
+                    }
+                } else if (obj_hdr->c_type == 1 && obj_len >= sizeof(struct rsvp_session_attribute_ra)) {
+                    info->sess_attr_ra = (struct rsvp_session_attribute_ra *)obj_data;
+                    if (info->sess_attr_ra->name_length > 0 && 
+                        sizeof(struct rsvp_session_attribute_ra) + info->sess_attr_ra->name_length <= (obj_len - sizeof(struct rsvp_obj_hdr))) {
+                        size_t nlen = info->sess_attr_ra->name_length;
+                        if (nlen >= sizeof(info->lsp_name)) nlen = sizeof(info->lsp_name) - 1;
+                        memcpy(info->lsp_name, info->sess_attr_ra->name, nlen);
+                        info->lsp_name[nlen] = '\0';
                     }
                 }
                 break;

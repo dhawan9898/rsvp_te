@@ -1,7 +1,9 @@
 #include "hal/hal_timer.h"
-#include <stdio.h>
+
+#include "common/rsvp_log.h"
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
 #include <sys/timerfd.h>
 #include <time.h>
 #include <errno.h>
@@ -15,7 +17,7 @@ uint32_t hal_timer_add(uint32_t timeout_ms, hal_timer_cb cb, void *data) {
     (void)data;
     int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
     if (tfd < 0) {
-        perror("timerfd_create");
+        LOG_ERROR("timerfd_create: %s", strerror(errno));
         return 0;
     }
 
@@ -26,20 +28,21 @@ uint32_t hal_timer_add(uint32_t timeout_ms, hal_timer_cb cb, void *data) {
     new_value.it_interval.tv_nsec = 0;
 
     if (timerfd_settime(tfd, 0, &new_value, NULL) < 0) {
-        perror("timerfd_settime");
+        LOG_ERROR("timerfd_settime: %s", strerror(errno));
         close(tfd);
         return 0;
     }
 
     /* In a real implementation, we'd add tfd to our poll() loop.
      * For now, we return the fd as the timer id. */
-    printf("[HAL-Linux] Created timerfd %d for %u ms\n", tfd, timeout_ms);
+    LOG_INFO("[HAL-Linux] Created timerfd %d for %u ms", tfd, timeout_ms);
     return (uint32_t)tfd;
 }
 
 void hal_timer_remove(uint32_t hal_timer_id) {
     if (hal_timer_id > 0) {
-        printf("[HAL-Linux] Removing timerfd %d\n", hal_timer_id);
+        LOG_INFO("[HAL-Linux] Removing timerfd %d", hal_timer_id);
         close((int)hal_timer_id);
     }
 }
+

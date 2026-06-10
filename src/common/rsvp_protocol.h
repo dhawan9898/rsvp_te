@@ -170,7 +170,17 @@ struct rsvp_label_ipv4 {
 } __attribute__((packed));
 
 /* SESSION_ATTRIBUTE Object (RFC 3209) */
+/* C-Type 7: LSP_TUNNEL_IPv4 */
 struct rsvp_session_attribute {
+    uint8_t  setup_prio;
+    uint8_t  holding_prio;
+    uint8_t  flags;
+    uint8_t  name_length;
+    char     name[]; /* Variable length, padded to 4 bytes */
+} __attribute__((packed));
+
+/* C-Type 1: LSP_TUNNEL_IPv4 with Resource Affinities */
+struct rsvp_session_attribute_ra {
     uint32_t exclude_any;
     uint32_t include_any;
     uint32_t include_all;
