@@ -6,27 +6,43 @@
 #include <arpa/inet.h>
 
 int rsvp_parse_packet(uint8_t *buffer, size_t len, struct rsvp_message_info *info) {
+    if (len < sizeof(struct iphdr)) {
+        return -1;
+    }
+
     struct iphdr *ip = (struct iphdr *)buffer;
     size_t ip_hdr_len = ip->ihl * 4;
+    if (ip_hdr_len < sizeof(struct iphdr) || ip_hdr_len > len) {
+        return -1;
+    }
 
     if (len < ip_hdr_len + sizeof(struct rsvp_common_hdr)) {
         return -1;
     }
 
     struct rsvp_common_hdr *rsvp_hdr = (struct rsvp_common_hdr *)(buffer + ip_hdr_len);
+    size_t rsvp_len = ntohs(rsvp_hdr->length);
+    if (rsvp_len < sizeof(struct rsvp_common_hdr)) {
+        return -1;
+    }
+    if (ip_hdr_len + rsvp_len > len) {
+        return -1;
+    }
+
     info->common_hdr = rsvp_hdr;
     info->payload = (uint8_t *)(rsvp_hdr + 1);
-    info->payload_len = ntohs(rsvp_hdr->length) - sizeof(struct rsvp_common_hdr);
+    info->payload_len = rsvp_len - sizeof(struct rsvp_common_hdr);
+    memset(info->lsp_name, 0, sizeof(info->lsp_name));
 
     /* Verify RSVP version */
-    if ((rsvp_hdr->ver_flags >> 4) != 1) {
+    if ((rsvp_hdr->ver_flags >> 4) != RSVP_VERSION) {
         return -1;
     }
 
     /* Verify checksum */
     uint16_t received_checksum = rsvp_hdr->checksum;
     rsvp_hdr->checksum = 0;
-    uint16_t computed_checksum = rsvp_checksum((uint16_t *)rsvp_hdr, ntohs(rsvp_hdr->length) / 2);
+    uint16_t computed_checksum = rsvp_checksum(rsvp_hdr, rsvp_len);
     if (received_checksum != computed_checksum && received_checksum != 0) {
         rsvp_hdr->checksum = received_checksum;
         return -1; /* Checksum mismatch */
@@ -47,73 +63,91 @@ int rsvp_parse_packet(uint8_t *buffer, size_t len, struct rsvp_message_info *inf
             break;
         }
 
+        size_t aligned_obj_len = RSVP_ALIGN(obj_len);
+        if (aligned_obj_len > remaining) {
+            break;
+        }
+
         uint8_t *obj_data = obj_ptr + sizeof(struct rsvp_obj_hdr);
 
         switch (obj_hdr->class_num) {
             case RSVP_CLASS_SESSION:
-                if (obj_hdr->c_type == 1 || obj_hdr->c_type == 7) { /* IPv4 or IPv4 LSP */
+                if ((obj_hdr->c_type == 1 || obj_hdr->c_type == 7) && obj_len >= sizeof(struct rsvp_session_ipv4)) {
                     info->sess_v4 = (struct rsvp_session_ipv4 *)obj_data;
                     memcpy(&info->key.session, info->sess_v4, sizeof(struct rsvp_session_ipv4));
                     session_found = true;
-                } else if (obj_hdr->c_type == 2 || obj_hdr->c_type == 8) { /* IPv6 or IPv6 LSP */
+                } else if ((obj_hdr->c_type == 2 || obj_hdr->c_type == 8) && obj_len >= sizeof(struct rsvp_session_ipv6)) {
                     info->sess_v6 = (struct rsvp_session_ipv6 *)obj_data;
                     /* TODO: Handle IPv6 key if needed */
                 }
                 break;
 
             case RSVP_CLASS_HOP:
-                if (obj_hdr->c_type == 1) {
+                if (obj_hdr->c_type == 1 && obj_len >= sizeof(struct rsvp_hop_ipv4)) {
                     info->hop_v4 = (struct rsvp_hop_ipv4 *)obj_data;
-                } else if (obj_hdr->c_type == 2) {
+                } else if (obj_hdr->c_type == 2 && obj_len >= sizeof(struct rsvp_hop_ipv6)) {
                     info->hop_v6 = (struct rsvp_hop_ipv6 *)obj_data;
                 }
                 break;
 
             case RSVP_CLASS_TIME_VALUES:
-                info->time_values = (struct rsvp_time_values *)obj_data;
+                if (obj_len >= sizeof(struct rsvp_time_values)) {
+                    info->time_values = (struct rsvp_time_values *)obj_data;
+                }
                 break;
 
             case RSVP_CLASS_ERROR_SPEC:
-                info->error_spec = (struct rsvp_error_spec_ipv4 *)obj_data;
+                if (obj_len >= sizeof(struct rsvp_error_spec_ipv4)) {
+                    info->error_spec = (struct rsvp_error_spec_ipv4 *)obj_data;
+                }
                 break;
 
             case RSVP_CLASS_SENDER_TEMPLATE:
             case RSVP_CLASS_FILTER_SPEC:
-                if (obj_hdr->c_type == 1 || obj_hdr->c_type == 7) { /* IPv4 or IPv4 LSP */
+                if ((obj_hdr->c_type == 1 || obj_hdr->c_type == 7) && obj_len >= sizeof(struct rsvp_sender_ipv4)) {
                     info->sender_v4 = (struct rsvp_sender_ipv4 *)obj_data;
                     memcpy(&info->key.sender, info->sender_v4, sizeof(struct rsvp_sender_ipv4));
                     sender_found = true;
-                } else if (obj_hdr->c_type == 2 || obj_hdr->c_type == 8) { /* IPv6 or IPv6 LSP */
+                } else if ((obj_hdr->c_type == 2 || obj_hdr->c_type == 8) && obj_len >= sizeof(struct rsvp_sender_ipv6)) {
                     info->sender_v6 = (struct rsvp_sender_ipv6 *)obj_data;
                 }
                 break;
 
             case RSVP_CLASS_SENDER_TSPEC:
-                info->tspec = (struct rsvp_sender_tspec *)obj_data;
+                if (obj_len >= sizeof(struct rsvp_sender_tspec)) {
+                    info->tspec = (struct rsvp_sender_tspec *)obj_data;
+                }
                 break;
 
             case RSVP_CLASS_ADSPEC:
-                info->adspec = (struct rsvp_adspec *)obj_data;
+                if (obj_len >= sizeof(struct rsvp_adspec)) {
+                    info->adspec = (struct rsvp_adspec *)obj_data;
+                }
                 break;
 
             case RSVP_CLASS_EXPLICIT_ROUTE:
-                info->ero = (struct rsvp_ero_ipv4_subobj *)obj_data;
-                info->ero_len = obj_len - sizeof(struct rsvp_obj_hdr);
+                if (obj_len > sizeof(struct rsvp_obj_hdr)) {
+                    info->ero = (struct rsvp_ero_ipv4_subobj *)obj_data;
+                    info->ero_len = obj_len - sizeof(struct rsvp_obj_hdr);
+                }
                 break;
 
             case RSVP_CLASS_LABEL:
-                info->label = (struct rsvp_label_ipv4 *)obj_data;
+                if (obj_len >= sizeof(struct rsvp_label_ipv4)) {
+                    info->label = (struct rsvp_label_ipv4 *)obj_data;
+                }
                 break;
 
             case RSVP_CLASS_LABEL_REQUEST:
-                info->label_req = (struct rsvp_label_request *)obj_data;
+                if (obj_len >= sizeof(struct rsvp_label_request)) {
+                    info->label_req = (struct rsvp_label_request *)obj_data;
+                }
                 break;
 
             case RSVP_CLASS_SESSION_ATTRIB:
-                if (obj_hdr->c_type == 1 || obj_hdr->c_type == 7) {
+                if ((obj_hdr->c_type == 1 || obj_hdr->c_type == 7) && obj_len >= sizeof(struct rsvp_session_attribute)) {
                     info->sess_attr = (struct rsvp_session_attribute *)obj_data;
-                    if (info->sess_attr->name_length > 0) {
-                        /* name_length is uint8_t, so it's always <= 255. lsp_name is 256 bytes. */
+                    if (info->sess_attr->name_length > 0 && sizeof(*info->sess_attr) + info->sess_attr->name_length <= obj_len) {
                         memcpy(info->lsp_name, info->sess_attr->name, info->sess_attr->name_length);
                         info->lsp_name[info->sess_attr->name_length] = '\0';
                     }
@@ -121,12 +155,11 @@ int rsvp_parse_packet(uint8_t *buffer, size_t len, struct rsvp_message_info *inf
                 break;
 
             default:
-                /* Unknown or unsupported object class */
                 break;
         }
 
-        obj_ptr += obj_len;
-        remaining -= obj_len;
+        obj_ptr += aligned_obj_len;
+        remaining -= aligned_obj_len;
     }
 
     (void)session_found;

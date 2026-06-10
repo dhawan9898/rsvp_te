@@ -36,7 +36,7 @@ int rsvp_builder_add_session_ipv4(struct rsvp_builder *b, struct in_addr *dest, 
     struct rsvp_session_ipv4 sess;
     memset(&sess, 0, sizeof(sess));
     sess.dest_addr = *dest;
-    sess.tunnel_id = tunnel_id;
+    sess.tunnel_id = htons(tunnel_id);
     sess.extended_tunnel_id = *ext_tunnel_id;
     return rsvp_builder_add_obj(b, RSVP_CLASS_SESSION, 7, &sess, sizeof(sess));
 }
@@ -45,7 +45,7 @@ int rsvp_builder_add_session_ipv6(struct rsvp_builder *b, struct in6_addr *dest,
     struct rsvp_session_ipv6 sess;
     memset(&sess, 0, sizeof(sess));
     sess.dest_addr = *dest;
-    sess.tunnel_id = tunnel_id;
+    sess.tunnel_id = htons(tunnel_id);
     sess.extended_tunnel_id = *ext_tunnel_id;
     return rsvp_builder_add_obj(b, RSVP_CLASS_SESSION, 8, &sess, sizeof(sess));
 }
@@ -77,7 +77,7 @@ int rsvp_builder_add_hop_ipv4(struct rsvp_builder *b, struct in_addr *neighbor, 
     struct rsvp_hop_ipv4 hop;
     memset(&hop, 0, sizeof(hop));
     hop.neighbor_addr = *neighbor;
-    hop.logical_interface = logical_intf;
+    hop.logical_interface = htonl(logical_intf);
     return rsvp_builder_add_obj(b, RSVP_CLASS_HOP, 1, &hop, sizeof(hop));
 }
 
@@ -85,7 +85,7 @@ int rsvp_builder_add_hop_ipv6(struct rsvp_builder *b, struct in6_addr *neighbor,
     struct rsvp_hop_ipv6 hop;
     memset(&hop, 0, sizeof(hop));
     hop.neighbor_addr = *neighbor;
-    hop.logical_interface = logical_intf;
+    hop.logical_interface = htonl(logical_intf);
     return rsvp_builder_add_obj(b, RSVP_CLASS_HOP, 2, &hop, sizeof(hop));
 }
 
@@ -114,20 +114,55 @@ int rsvp_builder_add_time_values(struct rsvp_builder *b, uint32_t refresh_ms) {
     return rsvp_builder_add_obj(b, RSVP_CLASS_TIME_VALUES, 1, &tv, sizeof(tv));
 }
 
+static void float_to_net(float value, uint32_t *out_bits) {
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof(bits));
+    *out_bits = htonl(bits);
+}
+
 int rsvp_builder_add_tspec(struct rsvp_builder *b, struct rsvp_sender_tspec *tspec) {
-    return rsvp_builder_add_obj(b, RSVP_CLASS_SENDER_TSPEC, 2, tspec, sizeof(*tspec));
+    struct rsvp_sender_tspec wire_tspec;
+    memcpy(&wire_tspec, tspec, sizeof(wire_tspec));
+    wire_tspec.length = htons((sizeof(wire_tspec) / 4) - 1);
+    wire_tspec.svc_length = htons(tspec->svc_length);
+    wire_tspec.param_length = htons(tspec->param_length);
+
+    uint32_t net_value;
+    float_to_net(tspec->token_bucket_rate, &net_value);
+    memcpy(&wire_tspec.token_bucket_rate, &net_value, sizeof(net_value));
+    float_to_net(tspec->token_bucket_size, &net_value);
+    memcpy(&wire_tspec.token_bucket_size, &net_value, sizeof(net_value));
+    float_to_net(tspec->peak_data_rate, &net_value);
+    memcpy(&wire_tspec.peak_data_rate, &net_value, sizeof(net_value));
+
+    wire_tspec.min_policed_unit = htonl(tspec->min_policed_unit);
+    wire_tspec.max_packet_size = htonl(tspec->max_packet_size);
+    return rsvp_builder_add_obj(b, RSVP_CLASS_SENDER_TSPEC, 2, &wire_tspec, sizeof(wire_tspec));
 }
 
 int rsvp_builder_add_adspec(struct rsvp_builder *b, struct rsvp_adspec *adspec) {
     return rsvp_builder_add_obj(b, RSVP_CLASS_ADSPEC, 2, adspec, sizeof(*adspec));
 }
 
-uint16_t rsvp_checksum(uint16_t *buf, int nwords) {
-    uint32_t sum;
-    for (sum = 0; nwords > 0; nwords--)
-        sum += *buf++;
-    sum = (sum >> 16) + (sum & 0xffff);
-    sum += (sum >> 16);
+uint16_t rsvp_checksum(const void *buf, size_t len) {
+    const uint8_t *data = (const uint8_t *)buf;
+    uint32_t sum = 0;
+
+    while (len > 1) {
+        uint16_t word;
+        memcpy(&word, data, sizeof(word));
+        sum += ntohs(word);
+        data += 2;
+        len -= 2;
+    }
+    if (len == 1) {
+        uint16_t word = data[0] << 8;
+        sum += word;
+    }
+
+    while (sum >> 16) {
+        sum = (sum & 0xffff) + (sum >> 16);
+    }
     return (uint16_t)(~sum);
 }
 

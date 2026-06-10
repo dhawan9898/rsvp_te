@@ -7,6 +7,7 @@
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <arpa/inet.h>
+#include <stdbool.h>
 
 #define MAX_INTERFACES 32
 
@@ -18,6 +19,20 @@ struct interface {
 
 static struct interface ifaces[MAX_INTERFACES];
 static int nl_sock = -1;
+
+static int find_iface_slot(int ifindex) {
+    for (int i = 0; i < MAX_INTERFACES; i++) {
+        if (ifaces[i].active && ifaces[i].ifindex == ifindex) {
+            return i;
+        }
+    }
+    for (int i = 0; i < MAX_INTERFACES; i++) {
+        if (!ifaces[i].active) {
+            return i;
+        }
+    }
+    return -1;
+}
 
 int hal_netlink_init(void) {
     struct sockaddr_nl sa;
@@ -71,11 +86,15 @@ void hal_netlink_process(void) {
 
             for (; RTA_OK(rta, rta_len); rta = RTA_NEXT(rta, rta_len)) {
                 if (rta->rta_type == IFA_LOCAL) {
-                    int idx = ifa->ifa_index % MAX_INTERFACES;
+                    int idx = find_iface_slot(ifa->ifa_index);
+                    if (idx < 0) {
+                        printf("Netlink: interface cache full, ignoring if %d\n", ifa->ifa_index);
+                        continue;
+                    }
                     ifaces[idx].ifindex = ifa->ifa_index;
                     ifaces[idx].addr = *(struct in_addr *)RTA_DATA(rta);
                     ifaces[idx].active = true;
-                    printf("Netlink: Cache updated for if %d: %s\n", 
+                    printf("Netlink: Cache updated for if %d: %s\n",
                            ifa->ifa_index, inet_ntoa(ifaces[idx].addr));
                 }
             }
@@ -136,6 +155,8 @@ int hal_netlink_get_egress_if(struct in_addr *dest, struct in_addr *next_hop) {
     req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
     req.nlh.nlmsg_flags = NLM_F_REQUEST;
     req.nlh.nlmsg_type = RTM_GETROUTE;
+    req.nlh.nlmsg_seq = 1;
+    req.nlh.nlmsg_pid = getpid();
     req.rtm.rtm_family = AF_INET;
     req.rtm.rtm_dst_len = 32;
 
@@ -163,27 +184,30 @@ int hal_netlink_get_egress_if(struct in_addr *dest, struct in_addr *next_hop) {
 
     if (len < 0) return -1;
 
-    struct nlmsghdr *nh = (struct nlmsghdr *)reply;
-    if (nh->nlmsg_type == NLMSG_ERROR) return -1;
+    int ifindex = -1;
+    *next_hop = *dest;
 
-    if (nh->nlmsg_type == RTM_NEWROUTE) {
-        struct rtmsg *rtm = NLMSG_DATA(nh);
-        int rta_len = IFA_PAYLOAD(nh);
-        struct rtattr *rtAttr = RTM_RTA(rtm);
-        int ifindex = -1;
+    struct nlmsghdr *nh;
+    for (nh = (struct nlmsghdr *)reply; NLMSG_OK(nh, len); nh = NLMSG_NEXT(nh, len)) {
+        if (nh->nlmsg_type == NLMSG_ERROR) {
+            return -1;
+        }
+        if (nh->nlmsg_type == RTM_NEWROUTE) {
+            struct rtmsg *rtm = NLMSG_DATA(nh);
+            int rta_len = RTM_PAYLOAD(nh);
+            struct rtattr *rtAttr = RTM_RTA(rtm);
 
-        memset(next_hop, 0, sizeof(struct in_addr));
-        /* Default to direct connection (next_hop = dest) unless a gateway is found */
-        *next_hop = *dest;
-
-        for (; RTA_OK(rtAttr, rta_len); rtAttr = RTA_NEXT(rtAttr, rta_len)) {
-            if (rtAttr->rta_type == RTA_OIF) {
-                ifindex = *(int *)RTA_DATA(rtAttr);
-            } else if (rtAttr->rta_type == RTA_GATEWAY) {
-                memcpy(&next_hop->s_addr, RTA_DATA(rtAttr), 4);
+            for (; RTA_OK(rtAttr, rta_len); rtAttr = RTA_NEXT(rtAttr, rta_len)) {
+                if (rtAttr->rta_type == RTA_OIF) {
+                    ifindex = *(int *)RTA_DATA(rtAttr);
+                } else if (rtAttr->rta_type == RTA_GATEWAY) {
+                    memcpy(&next_hop->s_addr, RTA_DATA(rtAttr), sizeof(next_hop->s_addr));
+                }
+            }
+            if (ifindex >= 0) {
+                return ifindex;
             }
         }
-        return ifindex;
     }
 
     return -1;

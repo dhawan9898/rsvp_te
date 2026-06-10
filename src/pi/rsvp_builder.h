@@ -39,6 +39,6 @@ int rsvp_builder_add_adspec(struct rsvp_builder *b, struct rsvp_adspec *adspec);
  */
 size_t rsvp_builder_finalize(struct rsvp_builder *b);
 
-uint16_t rsvp_checksum(uint16_t *buf, int nwords);
+uint16_t rsvp_checksum(const void *buf, size_t len);
 
 #endif /* RSVP_BUILDER_H */

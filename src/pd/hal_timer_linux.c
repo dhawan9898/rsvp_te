@@ -11,6 +11,8 @@
  */
 
 uint32_t hal_timer_add(uint32_t timeout_ms, hal_timer_cb cb, void *data) {
+    (void)cb;
+    (void)data;
     int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
     if (tfd < 0) {
         perror("timerfd_create");

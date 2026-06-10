@@ -70,6 +70,11 @@ void rsvp_dispatcher_run(void) {
         }
 
         for (int i = 0; i < nfds; i++) {
+            if (fds[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                fprintf(stderr, "poll event error on fd %d: revents=0x%x\n", fds[i].fd, fds[i].revents);
+                continue;
+            }
+
             if (fds[i].revents & POLLIN) {
                 if (fds[i].fd == rsvp_raw_sock) {
                     uint8_t buffer[MAX_RSVP_PACKET_SIZE];
@@ -84,6 +89,8 @@ void rsvp_dispatcher_run(void) {
                         if (rsvp_parse_packet(buffer, bytes_read, &info) == 0) {
                             rsvp_handle_message(&info);
                         }
+                    } else if (bytes_read < 0 && errno != EINTR) {
+                        perror("recvfrom");
                     }
                 } else if (fds[i].fd == hal_netlink_get_fd()) {
                     hal_netlink_process();

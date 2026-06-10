@@ -1,6 +1,7 @@
 #ifndef HAL_NETLINK_H
 #define HAL_NETLINK_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <netinet/in.h>
 

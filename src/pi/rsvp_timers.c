@@ -69,7 +69,14 @@ int rsvp_timer_get_fds(int *fds, int max_fds) {
 
 void rsvp_timer_handle_exp(int fd) {
     uint64_t exp;
-    read(fd, &exp, sizeof(exp)); /* Clear the timerfd */
+    ssize_t rc = read(fd, &exp, sizeof(exp));
+    if (rc != sizeof(exp)) {
+        if (rc < 0) {
+            perror("rsvp_timer_handle_exp: read");
+        } else {
+            fprintf(stderr, "rsvp_timer_handle_exp: short read %zd\n", rc);
+        }
+    }
 
     for (int i = 0; i < MAX_TIMERS; i++) {
         if (timers[i].active && timers[i].fd == fd) {
