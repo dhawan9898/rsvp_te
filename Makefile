@@ -9,15 +9,22 @@ SRC = src/main.c src/pi/rsvp_dispatcher.c src/pi/rsvp_parser.c src/pi/rsvp_state
 OBJ = $(SRC:.c=.o)
 TARGET = rsvp_daemon
 
-all: $(TARGET)
+TEST_SRC = test_rsvp.c src/pi/rsvp_parser.c src/pi/rsvp_state_db.c src/pi/rsvp_state_machine.c src/pi/label_mgr.c src/pi/rsvp_builder.c src/pi/rsvp_timers.c src/common/rsvp_log.c
+TEST_OBJ = $(TEST_SRC:.c=.o)
+TEST_TARGET = test_rsvp
+
+all: $(TARGET) $(TEST_TARGET)
 
 $(TARGET): $(OBJ)
 	$(CC) $(OBJ) -o $(TARGET) $(LDFLAGS)
+
+$(TEST_TARGET): $(TEST_OBJ)
+	$(CC) $(TEST_OBJ) -o $(TEST_TARGET) $(LDFLAGS)
 
 %.o: %.c $(COMMON_HDRS) $(PI_HDRS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) $(TARGET)
+	rm -f $(OBJ) $(TEST_OBJ) $(TARGET) $(TEST_TARGET)
 
 .PHONY: all clean

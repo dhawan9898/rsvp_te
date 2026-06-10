@@ -14,6 +14,8 @@
 #include <errno.h>
 #include <poll.h>
 
+#include <netinet/ip.h>
+
 #define RSVP_PROTOCOL 46
 #define MAX_RSVP_PACKET_SIZE 4096
 #define MAX_FDS 64
@@ -21,17 +23,23 @@
 static int rsvp_raw_sock = -1;
 
 int rsvp_dispatcher_init(void) {
+    int one = 1;
     rsvp_raw_sock = socket(AF_INET, SOCK_RAW, RSVP_PROTOCOL);
     if (rsvp_raw_sock < 0) {
         LOG_ERROR("Failed to create raw RSVP socket: %s", strerror(errno));
         return -1;
     }
 
+    if (setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) < 0) {
+        LOG_ERROR("Failed to set IP_HDRINCL: %s", strerror(errno));
+        /* Continue anyway, but rsvp_send_packet will fail or send wrong header */
+    }
+
     if (hal_netlink_init() < 0) {
         return -1;
     }
 
-    LOG_INFO("Raw RSVP socket created (fd: %d)", rsvp_raw_sock);
+    LOG_INFO("Raw RSVP socket created (fd: %d) with IP_HDRINCL", rsvp_raw_sock);
     return 0;
 }
 
@@ -104,38 +112,62 @@ void rsvp_dispatcher_run(void) {
     }
 }
 
-int rsvp_send_packet(struct in_addr *dest, uint8_t *buffer, size_t len, bool use_rao) {
+int rsvp_send_packet(struct in_addr *src, struct in_addr *dest, uint8_t *buffer, size_t len, bool use_rao) {
+    uint8_t packet[MAX_RSVP_PACKET_SIZE];
+    struct iphdr *iph = (struct iphdr *)packet;
     struct sockaddr_in dest_addr;
+    int optlen = use_rao ? 4 : 0;
+    size_t total_len = sizeof(struct iphdr) + optlen + len;
+
+    if (total_len > MAX_RSVP_PACKET_SIZE) {
+        LOG_ERROR("Packet too large: %zu", total_len);
+        return -1;
+    }
+
+    if (rsvp_raw_sock < 0) return -1;
+
+    memset(packet, 0, total_len);
+
+    iph->ihl = 5 + (optlen / 4);
+    iph->version = 4;
+    iph->tos = 0;
+    iph->tot_len = htons(total_len);
+    iph->id = 0;
+    iph->frag_off = 0;
+    
+    /* Try to get TTL from RSVP header */
+    struct rsvp_common_hdr *rsvp_hdr = (struct rsvp_common_hdr *)buffer;
+    iph->ttl = (len >= sizeof(struct rsvp_common_hdr)) ? rsvp_hdr->ttl : 255;
+    
+    iph->protocol = RSVP_PROTOCOL;
+    iph->saddr = src->s_addr;
+    iph->daddr = dest->s_addr;
+    iph->check = 0; /* Kernel will fill */
+
+    if (use_rao) {
+        uint8_t *options = packet + sizeof(struct iphdr);
+        options[0] = 148; /* RFC 2113: Router Alert Option */
+        options[1] = 4;
+        options[2] = 0;
+        options[3] = 0;
+    }
+
+    memcpy(packet + (iph->ihl * 4), buffer, len);
+
     memset(&dest_addr, 0, sizeof(dest_addr));
     dest_addr.sin_family = AF_INET;
     dest_addr.sin_addr = *dest;
 
-    if (rsvp_raw_sock < 0) return -1;
-
-    if (use_rao) {
-        uint8_t rao[] = { 148, 4, 0, 0 }; /* RFC 2113: Router Alert Option */
-        if (setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_OPTIONS, rao, sizeof(rao)) < 0) {
-            LOG_ERROR("setsockopt(IP_OPTIONS, RAO): %s", strerror(errno));
-        }
-    } else {
-        /* Clear IP options */
-        setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_OPTIONS, NULL, 0);
-    }
-
-    ssize_t bytes_sent = sendto(rsvp_raw_sock, buffer, len, 0,
+    ssize_t bytes_sent = sendto(rsvp_raw_sock, packet, total_len, 0,
                                 (struct sockaddr *)&dest_addr, sizeof(dest_addr));
-    
-    /* Always clear options after send to avoid affecting other messages */
-    if (use_rao) {
-        setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_OPTIONS, NULL, 0);
-    }
 
     if (bytes_sent < 0) {
         LOG_ERROR("sendto error: %s", strerror(errno));
         return -1;
     }
 
-    LOG_INFO("Sent %zd bytes to %s (RAO: %s)", bytes_sent, inet_ntoa(*dest), use_rao ? "on" : "off");
+    LOG_INFO("Sent %zd bytes to %s from %s (RAO: %s)", 
+             bytes_sent, inet_ntoa(*dest), inet_ntoa(*src), use_rao ? "on" : "off");
     return 0;
 }
 

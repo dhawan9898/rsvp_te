@@ -96,5 +96,20 @@ The current implementation shows a valid high-level structure, but there are sev
 - Improved dispatcher poll handling and timer expiration robustness in `src/pi/rsvp_dispatcher.c` and `src/pi/rsvp_timers.c`.
 - Fixed Netlink route lookup and interface caching in `src/pd/hal_netlink_linux.c`.
 - Added minimal `PathTear` and `ResvTear` forwarding support in `src/pi/rsvp_state_machine.c`.
+- **API Update**: Updated `rsvp_send_packet` to include `src_ip` and handle IP header construction (including RAO) manually using `IP_HDRINCL`.
+- **Protocol Logic Fixes**: 
+    - Path messages now use the source IP from the sender template.
+    - Resv messages now use the local interface IP as the source IP.
+    - PathErr and Teardown messages now correctly determine the source IP based on the outgoing interface.
+    - Fixed MPLS label extraction from the wire format (`label >> 12`).
+
+## 9. Future Improvements
+
+- Fully implement all RSVP-TE objects (ERO, RRO, etc.).
+- Add support for more complex session attributes and constraints.
+- Implement comprehensive refresh retransmission logic (RFC 2961).
+- Add unit tests for the builder and parser layers.
+- Implement a more robust logging system.
+
 
 If you want, I can continue with RFC-compliance testing or add static analysis unit tests for the RSVP parser and label manager.

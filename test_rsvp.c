@@ -52,9 +52,13 @@ void hal_timer_remove(uint32_t id) { (void)id; }
 static uint8_t captured_packet[2048];
 static size_t captured_len = 0;
 
-int rsvp_send_packet(struct in_addr *dest, uint8_t *buffer, size_t len, bool use_rao) {
-    printf("[TEST] Captured packet sent to %s, length: %zu (RAO: %s)\n", 
-           inet_ntoa(*dest), len, use_rao ? "on" : "off");
+int rsvp_send_packet(struct in_addr *src, struct in_addr *dest, uint8_t *buffer, size_t len, bool use_rao) {
+    char src_str[INET_ADDRSTRLEN];
+    char dest_str[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, src, src_str, sizeof(src_str));
+    inet_ntop(AF_INET, dest, dest_str, sizeof(dest_str));
+    printf("[TEST] Captured packet sent to %s from %s, length: %zu (RAO: %s)\n", 
+           dest_str, src_str, len, use_rao ? "on" : "off");
     memcpy(captured_packet, buffer, len);
     captured_len = len;
     return 0;

@@ -49,6 +49,11 @@ static void handle_path_message(struct rsvp_message_info *info) {
         psb->cleanup_timer_id = rsvp_timer_start(RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, psb_cleanup_timer_cb, psb);
     }
 
+    if (info->hop_v4) {
+        psb->prev_hop = *info->hop_v4;
+        psb->ifindex_in = ntohl(info->hop_v4->logical_interface);
+    }
+
     dest = info->key.session.dest_addr;
     if (hal_netlink_is_local_addr(&dest)) {
         /* Egress: We are the tail-end. Triggering RESV... */
@@ -97,7 +102,8 @@ static void handle_path_message(struct rsvp_message_info *info) {
         info->common_hdr->checksum = rsvp_checksum((uint16_t *)info->common_hdr, ntohs(info->common_hdr->length));
         
         /* Forward PATH directly to session destination with RAO */
-        rsvp_send_packet(&dest, (uint8_t *)info->common_hdr, ntohs(info->common_hdr->length), true);
+        struct in_addr src_ip = info->key.sender.source_addr;
+        rsvp_send_packet(&src_ip, &dest, (uint8_t *)info->common_hdr, ntohs(info->common_hdr->length), true);
     }
 }
 
@@ -219,12 +225,19 @@ static void handle_path_err(struct rsvp_message_info *info) {
     if (psb && psb->prev_hop.neighbor_addr.s_addr != 0) {
         LOG_INFO("Propagating PathErr upstream to %s...", inet_ntoa(psb->prev_hop.neighbor_addr));
         struct in_addr prev_addr = psb->prev_hop.neighbor_addr;
+        struct in_addr local_addr = {0};
+        struct in_addr dummy;
+        int out_ifindex = hal_netlink_get_egress_if(&prev_addr, &dummy);
+        if (out_ifindex >= 0) {
+            hal_netlink_get_local_addr(out_ifindex, &local_addr);
+        }
+
         if (info->common_hdr->ttl > 0) {
             info->common_hdr->ttl--;
         }
         info->common_hdr->checksum = 0;
         info->common_hdr->checksum = rsvp_checksum(info->common_hdr, ntohs(info->common_hdr->length));
-        rsvp_send_packet(&prev_addr, (uint8_t *)info->common_hdr, ntohs(info->common_hdr->length), false);
+        rsvp_send_packet(&local_addr, &prev_addr, (uint8_t *)info->common_hdr, ntohs(info->common_hdr->length), false);
     }
 }
 
@@ -309,7 +322,7 @@ static void send_resv_upstream(struct rsvp_rsb *rsb) {
 
     size_t len = rsvp_builder_finalize(&b);
     struct in_addr nbr_addr = psb->prev_hop.neighbor_addr;
-    rsvp_send_packet(&nbr_addr, buf, len, false);
+    rsvp_send_packet(&local_addr, &nbr_addr, buf, len, false);
 }
 
 static void propagate_path_tear(struct rsvp_psb *psb) {
@@ -333,7 +346,8 @@ static void propagate_path_tear(struct rsvp_psb *psb) {
         rsvp_builder_add_hop_ipv4(&b, &local_addr, out_ifindex);
     }
     size_t len = rsvp_builder_finalize(&b);
-    rsvp_send_packet(&dest_addr, buf, len, true);
+    struct in_addr src_ip = psb->key.sender.source_addr;
+    rsvp_send_packet(&src_ip, &dest_addr, buf, len, true);
 }
 
 static void propagate_resv_tear(struct rsvp_rsb *rsb) {
@@ -362,7 +376,14 @@ static void propagate_resv_tear(struct rsvp_rsb *rsb) {
     rsvp_builder_add_hop_ipv4(&b, &prev_neighbor, ntohl(prev_hop.logical_interface));
     rsvp_builder_add_time_values(&b, RSVP_REFRESH_MS);
     size_t len = rsvp_builder_finalize(&b);
-    rsvp_send_packet(&prev_neighbor, buf, len, false);
+
+    struct in_addr local_addr = {0};
+    struct in_addr dummy;
+    int ifindex = hal_netlink_get_egress_if(&prev_neighbor, &dummy);
+    if (ifindex >= 0) {
+        hal_netlink_get_local_addr(ifindex, &local_addr);
+    }
+    rsvp_send_packet(&local_addr, &prev_neighbor, buf, len, false);
 }
 
 static void send_path_downstream(struct rsvp_psb *psb) {
@@ -409,7 +430,8 @@ static void send_path_downstream(struct rsvp_psb *psb) {
     rsvp_builder_add_tspec(&b, &tspec);
 
     size_t len = rsvp_builder_finalize(&b);
-    rsvp_send_packet(&dest_addr, buf, len, true);
+    struct in_addr src_ip = psb->key.sender.source_addr;
+    rsvp_send_packet(&src_ip, &dest_addr, buf, len, true);
 }
 
 void rsvp_initiate_path(struct in_addr *src, struct in_addr *dest, uint16_t tunnel_id, const char *lsp_name) {
