@@ -35,6 +35,10 @@ int rsvp_dispatcher_init(void) {
         /* Continue anyway, but rsvp_send_packet will fail or send wrong header */
     }
 
+    if (setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_ROUTER_ALERT, &one, sizeof(one)) < 0) {
+        LOG_ERROR("Failed to set IP_ROUTER_ALERT: %s", strerror(errno));
+    }
+
     if (hal_netlink_init() < 0) {
         return -1;
     }

@@ -161,7 +161,7 @@ uint16_t rsvp_checksum(const void *buf, size_t len) {
     while (sum >> 16) {
         sum = (sum & 0xffff) + (sum >> 16);
     }
-    return (uint16_t)(~sum);
+    return htons((uint16_t)(~sum));
 }
 
 size_t rsvp_builder_finalize(struct rsvp_builder *b) {
