@@ -8,6 +8,7 @@
 #include "pi/rsvp_state_db.h"
 #include "pi/label_mgr.h"
 #include "pi/rsvp_timers.h"
+#include <stdbool.h>
 
 /* Mock HAL functions for testing */
 int hal_netlink_get_egress_if(struct in_addr *dest, struct in_addr *next_hop) {
@@ -17,6 +18,7 @@ int hal_netlink_get_egress_if(struct in_addr *dest, struct in_addr *next_hop) {
 }
 
 int hal_netlink_get_local_addr(int ifindex, struct in_addr *addr) {
+    (void)ifindex;
     inet_aton("10.0.0.1", addr);
     return 0;
 }
@@ -27,19 +29,32 @@ bool hal_netlink_is_local_addr(struct in_addr *addr) {
     return addr->s_addr == local.s_addr;
 }
 
+int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex, struct in_addr *next_hop) {
+    printf("[TEST] MPLS Install: in=%u, out=%u, if=%d, next=%s\n", 
+           in_label, out_label, out_ifindex, inet_ntoa(*next_hop));
+    return 0;
+}
+
+int hal_mpls_remove(uint32_t in_label) {
+    printf("[TEST] MPLS Remove: in=%u\n", in_label);
+    return 0;
+}
+
 /* Mock timer functions so we don't need real Linux timerfds for the test */
 uint32_t hal_timer_add(uint32_t timeout_ms, void* cb, void *data) {
+    (void)timeout_ms; (void)cb; (void)data;
     static uint32_t fake_id = 100;
     return fake_id++;
 }
-void hal_timer_remove(uint32_t id) {}
+void hal_timer_remove(uint32_t id) { (void)id; }
 
 /* We will capture the packet sent by rsvp_initiate_path */
 static uint8_t captured_packet[2048];
 static size_t captured_len = 0;
 
-int rsvp_send_packet(struct in_addr *dest, uint8_t *buffer, size_t len) {
-    printf("[TEST] Captured packet sent to %s, length: %zu\n", inet_ntoa(*dest), len);
+int rsvp_send_packet(struct in_addr *dest, uint8_t *buffer, size_t len, bool use_rao) {
+    printf("[TEST] Captured packet sent to %s, length: %zu (RAO: %s)\n", 
+           inet_ntoa(*dest), len, use_rao ? "on" : "off");
     memcpy(captured_packet, buffer, len);
     captured_len = len;
     return 0;
@@ -48,7 +63,7 @@ int rsvp_send_packet(struct in_addr *dest, uint8_t *buffer, size_t len) {
 int main() {
     printf("--- Running RSVP-TE Logic Verification ---\n");
     rsvp_state_db_init();
-    label_mgr_init(100, 200);
+    label_mgr_init(1000, 2000);
     
     struct in_addr src, dest;
     inet_aton("10.0.0.1", &src);
@@ -62,13 +77,9 @@ int main() {
         struct rsvp_message_info info;
         memset(&info, 0, sizeof(info));
         
-        /* The builder puts the common header at the start of the buffer.
-           Normally the socket includes an IP header, but our rsvp_send_packet 
-           gets just the RSVP payload. We need to prepend a dummy IP header 
-           for rsvp_parse_packet, since it expects an IP header! */
-           
         uint8_t pkt_with_ip[2048];
         struct iphdr *ip = (struct iphdr *)pkt_with_ip;
+        memset(ip, 0, 20);
         ip->ihl = 5; /* 20 bytes */
         
         memcpy(pkt_with_ip + 20, captured_packet, captured_len);
@@ -76,25 +87,31 @@ int main() {
         if (rsvp_parse_packet(pkt_with_ip, captured_len + 20, &info) == 0) {
             printf("Parse SUCCESS!\n");
             printf("Message Type: %d\n", info.common_hdr->msg_type);
-            printf("Tunnel ID: %d\n", info.key.session.tunnel_id);
+            printf("Tunnel ID: %d\n", ntohs(info.key.session.tunnel_id));
             printf("Source IP: %s\n", inet_ntoa(info.key.sender.source_addr));
             
-            if (info.label_req) {
-                printf("LABEL_REQUEST Object found (L3PID: 0x%04x)\n", ntohs(info.label_req->l3pid));
-            } else {
-                printf("ERROR: LABEL_REQUEST missing!\n");
-            }
+            /* Process the PATH message. Since hal_netlink_is_local_addr(10.0.0.2) is TRUE,
+               this will trigger Egress logic and send a RESV upstream. */
+            printf("\n--- Processing PATH at Egress ---\n");
+            rsvp_handle_message(&info);
             
-            if (info.tspec) {
-                printf("SENDER_TSPEC Object found\n");
-            } else {
-                printf("ERROR: SENDER_TSPEC missing!\n");
-            }
+            /* Now the 'captured_packet' should contain the RESV message */
+            printf("\n--- Processing RESV at Ingress ---\n");
+            struct rsvp_message_info resv_info;
+            memset(&resv_info, 0, sizeof(resv_info));
             
-            /* Now simulate receiving a RESV */
-            printf("\n3. Simulating RESV message reception...\n");
-            info.common_hdr->msg_type = RSVP_MSG_RESV; /* Fake it */
-            rsvp_handle_message(&info); /* This should trigger RESV logic */
+            uint8_t resv_pkt_with_ip[2048];
+            struct iphdr *resv_ip = (struct iphdr *)resv_pkt_with_ip;
+            memset(resv_ip, 0, 20);
+            resv_ip->ihl = 5;
+            memcpy(resv_pkt_with_ip + 20, captured_packet, captured_len);
+            
+            if (rsvp_parse_packet(resv_pkt_with_ip, captured_len + 20, &resv_info) == 0) {
+                printf("RESV Parse SUCCESS!\n");
+                rsvp_handle_message(&resv_info);
+            } else {
+                printf("RESV Parse FAILED!\n");
+            }
             
         } else {
             printf("Parse FAILED!\n");

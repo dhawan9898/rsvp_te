@@ -215,3 +215,15 @@ int hal_netlink_get_egress_if(struct in_addr *dest, struct in_addr *next_hop) {
     return -1;
 }
 
+int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex, struct in_addr *next_hop) {
+    LOG_INFO("[HAL-Linux] Installing MPLS: in=%u, out=%u, if=%d, next_hop=%s",
+           in_label, out_label, out_ifindex, inet_ntoa(*next_hop));
+    /* Real implementation would use RTM_NEWROUTE with AF_MPLS */
+    return 0;
+}
+
+int hal_mpls_remove(uint32_t in_label) {
+    LOG_INFO("[HAL-Linux] Removing MPLS: in=%u", in_label);
+    /* Real implementation would use RTM_DELROUTE with AF_MPLS */
+    return 0;
+}

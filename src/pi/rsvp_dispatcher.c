@@ -104,7 +104,7 @@ void rsvp_dispatcher_run(void) {
     }
 }
 
-int rsvp_send_packet(struct in_addr *dest, uint8_t *buffer, size_t len) {
+int rsvp_send_packet(struct in_addr *dest, uint8_t *buffer, size_t len, bool use_rao) {
     struct sockaddr_in dest_addr;
     memset(&dest_addr, 0, sizeof(dest_addr));
     dest_addr.sin_family = AF_INET;
@@ -112,14 +112,30 @@ int rsvp_send_packet(struct in_addr *dest, uint8_t *buffer, size_t len) {
 
     if (rsvp_raw_sock < 0) return -1;
 
+    if (use_rao) {
+        uint8_t rao[] = { 148, 4, 0, 0 }; /* RFC 2113: Router Alert Option */
+        if (setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_OPTIONS, rao, sizeof(rao)) < 0) {
+            LOG_ERROR("setsockopt(IP_OPTIONS, RAO): %s", strerror(errno));
+        }
+    } else {
+        /* Clear IP options */
+        setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_OPTIONS, NULL, 0);
+    }
+
     ssize_t bytes_sent = sendto(rsvp_raw_sock, buffer, len, 0,
                                 (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    
+    /* Always clear options after send to avoid affecting other messages */
+    if (use_rao) {
+        setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_OPTIONS, NULL, 0);
+    }
+
     if (bytes_sent < 0) {
         LOG_ERROR("sendto error: %s", strerror(errno));
         return -1;
     }
 
-    LOG_INFO("Sent %zd bytes to %s", bytes_sent, inet_ntoa(*dest));
+    LOG_INFO("Sent %zd bytes to %s (RAO: %s)", bytes_sent, inet_ntoa(*dest), use_rao ? "on" : "off");
     return 0;
 }
 

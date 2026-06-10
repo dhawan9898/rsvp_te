@@ -64,7 +64,8 @@ static void handle_path_message(struct rsvp_message_info *info) {
         }
     } else {
         /* Transit node or Ingress receiving its own packet */
-        if (hal_netlink_is_local_addr(&info->key.sender.source_addr)) {
+        struct in_addr src_addr = info->key.sender.source_addr;
+        if (hal_netlink_is_local_addr(&src_addr)) {
             LOG_INFO("Ingress: Received own PATH message back. Dropping to prevent loop.");
             return;
         }
@@ -95,7 +96,8 @@ static void handle_path_message(struct rsvp_message_info *info) {
         info->common_hdr->checksum = 0;
         info->common_hdr->checksum = rsvp_checksum((uint16_t *)info->common_hdr, ntohs(info->common_hdr->length));
         
-        rsvp_send_packet(&next_hop, (uint8_t *)info->common_hdr, ntohs(info->common_hdr->length));
+        /* Forward PATH directly to session destination with RAO */
+        rsvp_send_packet(&dest, (uint8_t *)info->common_hdr, ntohs(info->common_hdr->length), true);
     }
 }
 
@@ -128,14 +130,36 @@ static void handle_resv_message(struct rsvp_message_info *info) {
         rsb->label_out = ntohl(info->label->label) >> 12;
     }
 
-    if (is_new) {
-        if (rsb->associated_psb && rsb->associated_psb->prev_hop.neighbor_addr.s_addr != 0) {
-            rsb->label_in = label_mgr_alloc();
-            LOG_INFO("Transit: Forwarding RESV upstream to %s (label in: %u, out: %u)", 
-                   inet_ntoa(rsb->associated_psb->prev_hop.neighbor_addr), rsb->label_in, rsb->label_out);
-            send_resv_upstream(rsb);
-        } else {
-            LOG_INFO("Ingress: Reservation complete for LSP %d", ntohs(rsb->key.session.tunnel_id));
+    if (info->hop_v4) {
+        rsb->next_hop = *info->hop_v4;
+    }
+
+    if (is_new || (info->label && rsb->label_out != (ntohl(info->label->label) >> 12))) {
+        if (rsb->associated_psb) {
+            struct rsvp_psb *psb = rsb->associated_psb;
+            struct in_addr next_hop_addr = rsb->next_hop.neighbor_addr;
+            if (psb->prev_hop.neighbor_addr.s_addr != 0) {
+                /* Transit node */
+                if (rsb->label_in == 0) rsb->label_in = label_mgr_alloc();
+                LOG_INFO("Transit: Programming MPLS swap %u -> %u via if %u", 
+                       rsb->label_in, rsb->label_out, ntohl(rsb->next_hop.logical_interface));
+                hal_mpls_install(rsb->label_in, rsb->label_out, 
+                               ntohl(rsb->next_hop.logical_interface), 
+                               &next_hop_addr);
+                if (is_new) {
+                    LOG_INFO("Transit: Forwarding RESV upstream to %s", 
+                           inet_ntoa(psb->prev_hop.neighbor_addr));
+                    send_resv_upstream(rsb);
+                }
+            } else {
+                /* Ingress node */
+                LOG_INFO("Ingress: Programming MPLS push %u via if %u", 
+                       rsb->label_out, ntohl(rsb->next_hop.logical_interface));
+                hal_mpls_install(0, rsb->label_out, 
+                               ntohl(rsb->next_hop.logical_interface), 
+                               &next_hop_addr);
+                LOG_INFO("Ingress: Reservation complete for LSP %d", ntohs(rsb->key.session.tunnel_id));
+            }
         }
     }
 }
@@ -166,7 +190,11 @@ static void handle_resv_tear(struct rsvp_message_info *info) {
         propagate_resv_tear(rsb);
         
         if (rsb->label_in != 0) {
+            hal_mpls_remove(rsb->label_in);
             label_mgr_free(rsb->label_in);
+        } else {
+            /* Ingress */
+            hal_mpls_remove(0);
         }
         
         if (rsb->associated_psb) {
@@ -196,7 +224,7 @@ static void handle_path_err(struct rsvp_message_info *info) {
         }
         info->common_hdr->checksum = 0;
         info->common_hdr->checksum = rsvp_checksum(info->common_hdr, ntohs(info->common_hdr->length));
-        rsvp_send_packet(&prev_addr, (uint8_t *)info->common_hdr, ntohs(info->common_hdr->length));
+        rsvp_send_packet(&prev_addr, (uint8_t *)info->common_hdr, ntohs(info->common_hdr->length), false);
     }
 }
 
@@ -281,7 +309,7 @@ static void send_resv_upstream(struct rsvp_rsb *rsb) {
 
     size_t len = rsvp_builder_finalize(&b);
     struct in_addr nbr_addr = psb->prev_hop.neighbor_addr;
-    rsvp_send_packet(&nbr_addr, buf, len);
+    rsvp_send_packet(&nbr_addr, buf, len, false);
 }
 
 static void propagate_path_tear(struct rsvp_psb *psb) {
@@ -305,7 +333,7 @@ static void propagate_path_tear(struct rsvp_psb *psb) {
         rsvp_builder_add_hop_ipv4(&b, &local_addr, out_ifindex);
     }
     size_t len = rsvp_builder_finalize(&b);
-    rsvp_send_packet(&next_hop, buf, len);
+    rsvp_send_packet(&dest_addr, buf, len, true);
 }
 
 static void propagate_resv_tear(struct rsvp_rsb *rsb) {
@@ -334,24 +362,60 @@ static void propagate_resv_tear(struct rsvp_rsb *rsb) {
     rsvp_builder_add_hop_ipv4(&b, &prev_neighbor, ntohl(prev_hop.logical_interface));
     rsvp_builder_add_time_values(&b, RSVP_REFRESH_MS);
     size_t len = rsvp_builder_finalize(&b);
-    rsvp_send_packet(&prev_neighbor, buf, len);
+    rsvp_send_packet(&prev_neighbor, buf, len, false);
+}
+
+static void send_path_downstream(struct rsvp_psb *psb) {
+    uint8_t buf[1024];
+    struct rsvp_builder b;
+    struct in_addr dest_addr = psb->key.session.dest_addr;
+    struct in_addr ext_dest = psb->key.session.extended_tunnel_id;
+    struct in_addr next_hop = {0};
+    
+    int ifindex = hal_netlink_get_egress_if(&dest_addr, &next_hop);
+    if (ifindex < 0) {
+        LOG_INFO("send_path_downstream: no route to %s", inet_ntoa(dest_addr));
+        return;
+    }
+    psb->ifindex_out = ifindex;
+
+    rsvp_builder_init(&b, buf, sizeof(buf), RSVP_MSG_PATH);
+    rsvp_builder_add_session_ipv4(&b, &dest_addr, ntohs(psb->key.session.tunnel_id), &ext_dest);
+    
+    struct in_addr local_addr = {0};
+    if (hal_netlink_get_local_addr(ifindex, &local_addr) < 0) {
+        local_addr = psb->key.sender.source_addr;
+    }
+    rsvp_builder_add_hop_ipv4(&b, &local_addr, ifindex);
+    rsvp_builder_add_time_values(&b, RSVP_REFRESH_MS);
+    rsvp_builder_add_label_request(&b, 0x0800);
+    
+    /* In a real implementation, we'd add SESSION_ATTRIB from the PSB */
+    rsvp_builder_add_obj(&b, RSVP_CLASS_SENDER_TEMPLATE, 7, &psb->key.sender, sizeof(psb->key.sender));
+    
+    struct rsvp_sender_tspec tspec;
+    memset(&tspec, 0, sizeof(tspec));
+    tspec.version = 0;
+    tspec.length = (sizeof(tspec) / 4) - 1;
+    tspec.service_hdr = 5;
+    tspec.svc_length = 6;
+    tspec.param_id = 127;
+    tspec.param_length = 5;
+    tspec.token_bucket_rate = 1000000.0f;
+    tspec.token_bucket_size = 1000.0f;
+    tspec.peak_data_rate = 1000000.0f;
+    tspec.min_policed_unit = 64;
+    tspec.max_packet_size = 1500;
+    rsvp_builder_add_tspec(&b, &tspec);
+
+    size_t len = rsvp_builder_finalize(&b);
+    rsvp_send_packet(&dest_addr, buf, len, true);
 }
 
 void rsvp_initiate_path(struct in_addr *src, struct in_addr *dest, uint16_t tunnel_id, const char *lsp_name) {
-    uint8_t buf[1024];
-    struct rsvp_builder b;
     struct rsvp_path_key key;
-    struct in_addr ext_id = *src; /* Extended tunnel ID is src_ip */
-    struct in_addr next_hop = {0};
-
-    int ifindex = hal_netlink_get_egress_if(dest, &next_hop);
-    if (ifindex < 0) {
-        LOG_INFO("Failed to find route to dest %s", inet_ntoa(*dest));
-        return;
-    }
-
-    LOG_INFO("Initiating PATH for tunnel %d (LSP: %s) to %s via %s (ifindex %d)", 
-           tunnel_id, lsp_name ? lsp_name : "none", inet_ntoa(*dest), inet_ntoa(next_hop), ifindex);
+    struct in_addr ext_id = *src;
+    (void)lsp_name;
 
     memset(&key, 0, sizeof(key));
     key.session.dest_addr = *dest;
@@ -366,57 +430,20 @@ void rsvp_initiate_path(struct in_addr *src, struct in_addr *dest, uint16_t tunn
         if (!psb) return;
         psb->cleanup_timer_id = rsvp_timer_start(RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, psb_cleanup_timer_cb, psb);
         psb->refresh_timer_id = rsvp_timer_start(RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, psb_refresh_timer_cb, psb);
-        psb->ifindex_out = ifindex;
     }
 
-    rsvp_builder_init(&b, buf, sizeof(buf), RSVP_MSG_PATH);
-    rsvp_builder_add_session_ipv4(&b, dest, tunnel_id, &ext_id);
-    
-    struct in_addr local_addr = {0};
-    if (hal_netlink_get_local_addr(ifindex, &local_addr) < 0) {
-        local_addr = *src; /* Fallback to src if local addr lookup fails */
-    }
-    rsvp_builder_add_hop_ipv4(&b, &local_addr, ifindex);
-    rsvp_builder_add_time_values(&b, RSVP_REFRESH_MS);
-    
-    /* LABEL_REQUEST */
-    rsvp_builder_add_label_request(&b, 0x0800); /* 0x0800 = IPv4 */
-    
-    /* SESSION_ATTRIBUTE */
-    if (lsp_name) {
-        rsvp_builder_add_session_attribute(&b, lsp_name);
-    }
-    
-    /* Sender Template (C-Type 7 for IPv4 LSP) */
-    rsvp_builder_add_obj(&b, RSVP_CLASS_SENDER_TEMPLATE, 7, &key.sender, sizeof(key.sender));
-    
-    /* SENDER_TSPEC */
-    struct rsvp_sender_tspec tspec;
-    memset(&tspec, 0, sizeof(tspec));
-    tspec.version = 0;
-    tspec.length = (sizeof(tspec) / 4) - 1;
-    tspec.service_hdr = 5; /* Controlled-Load */
-    tspec.svc_length = 6;
-    tspec.param_id = 127; /* Token Bucket */
-    tspec.param_length = 5;
-    tspec.token_bucket_rate = 1000000.0f;
-    tspec.token_bucket_size = 1000.0f;
-    tspec.peak_data_rate = 1000000.0f;
-    tspec.min_policed_unit = 64;
-    tspec.max_packet_size = 1500;
-    rsvp_builder_add_tspec(&b, &tspec);
-
-    /* ERO is omitted as per request: route using Netlink entirely */
-
-    size_t len = rsvp_builder_finalize(&b);
-    
-    /* Send strictly hop-by-hop using the physical next hop IP */
-    rsvp_send_packet(&next_hop, buf, len);
+    send_path_downstream(psb);
 }
 
 static void psb_refresh_timer_cb(void *arg) {
     struct rsvp_psb *psb = (struct rsvp_psb *)arg;
     psb->refresh_timer_id = rsvp_timer_start(RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, psb_refresh_timer_cb, psb);
+    
+    if (psb->prev_hop.neighbor_addr.s_addr == 0) {
+        /* We are Ingress */
+        LOG_INFO("Ingress: Sending PATH refresh...");
+        send_path_downstream(psb);
+    }
 }
 
 static void psb_cleanup_timer_cb(void *arg) {
@@ -442,7 +469,12 @@ static void rsb_cleanup_timer_cb(void *arg) {
     struct rsvp_rsb *rsb = (struct rsvp_rsb *)arg;
     rsvp_timer_stop(rsb->refresh_timer_id);
     if (rsb->associated_psb) rsb->associated_psb->associated_rsb = NULL;
-    if (rsb->label_in != 0) label_mgr_free(rsb->label_in);
+    if (rsb->label_in != 0) {
+        hal_mpls_remove(rsb->label_in);
+        label_mgr_free(rsb->label_in);
+    } else {
+        hal_mpls_remove(0);
+    }
     rsvp_rsb_delete(rsb);
 }
 

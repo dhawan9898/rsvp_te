@@ -19,6 +19,6 @@ void rsvp_dispatcher_run(void);
 /**
  * Send an RSVP packet to a specific destination.
  */
-int rsvp_send_packet(struct in_addr *dest, uint8_t *buffer, size_t len);
+int rsvp_send_packet(struct in_addr *dest, uint8_t *buffer, size_t len, bool use_rao);
 
 #endif /* RSVP_DISPATCHER_H */

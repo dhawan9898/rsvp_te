@@ -35,4 +35,14 @@ int hal_netlink_get_egress_if(struct in_addr *dest, struct in_addr *next_hop);
  */
 bool hal_netlink_is_local_addr(struct in_addr *addr);
 
+/**
+ * Install an MPLS label (swap or push) in the data plane.
+ */
+int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex, struct in_addr *next_hop);
+
+/**
+ * Remove an MPLS label from the data plane.
+ */
+int hal_mpls_remove(uint32_t in_label);
+
 #endif /* HAL_NETLINK_H */
