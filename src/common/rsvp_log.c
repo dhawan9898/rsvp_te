@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <time.h>
 
-static rsvp_log_level_t current_level = LOG_LEVEL_INFO;
+static rsvp_log_level_t current_level = LOG_LEVEL_DEBUG;
 
 void rsvp_set_log_level(rsvp_log_level_t level) { current_level = level; }
 

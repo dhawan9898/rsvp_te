@@ -54,6 +54,7 @@ void rsvp_psb_delete(struct rsvp_psb* psb) {
     while (curr) {
         if (curr == psb) {
             *prev = curr->next_hash;
+            if (psb->lsp_name) free(psb->lsp_name);
             free(psb);
             return;
         }

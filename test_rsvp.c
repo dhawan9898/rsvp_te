@@ -44,14 +44,11 @@ int hal_mpls_remove(uint32_t in_label) {
 }
 
 /* Mock timer functions so we don't need real Linux timerfds for the test */
-uint32_t hal_timer_add(uint32_t timeout_ms, void* cb, void* data) {
-    (void)timeout_ms;
-    (void)cb;
-    (void)data;
-    static uint32_t fake_id = 100;
-    return fake_id++;
+int hal_timer_init(void) {
+    return 100; /* Fake FD */
 }
-void hal_timer_remove(uint32_t id) { (void)id; }
+void hal_timer_set(uint32_t timeout_ms) { (void)timeout_ms; }
+void hal_timer_clear(void) {}
 
 /* We will capture the packet sent by rsvp_initiate_path */
 static uint8_t captured_packet[2048];
@@ -94,7 +91,7 @@ int main() {
 
         memcpy(pkt_with_ip + 20, captured_packet, captured_len);
 
-        if (rsvp_parse_packet(pkt_with_ip, captured_len + 20, &info) == 0) {
+        if (rsvp_parse_packet(pkt_with_ip, captured_len + 20, &info) == RSVP_SUCCESS) {
             printf("Parse SUCCESS!\n");
             printf("Message Type: %d\n", info.common_hdr->msg_type);
             printf("Tunnel ID: %d\n", ntohs(info.key.session.tunnel_id));
@@ -118,7 +115,7 @@ int main() {
             memcpy(resv_pkt_with_ip + 20, captured_packet, captured_len);
 
             if (rsvp_parse_packet(resv_pkt_with_ip, captured_len + 20,
-                                  &resv_info) == 0) {
+                                  &resv_info) == RSVP_SUCCESS) {
                 printf("RESV Parse SUCCESS!\n");
                 rsvp_handle_message(&resv_info);
             } else {

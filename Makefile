@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -I./src -I./src/common -I./src/pi
 LDFLAGS = 
 
-COMMON_HDRS = src/common/rsvp_protocol.h src/common/rsvp_log.h
+COMMON_HDRS = src/common/rsvp_protocol.h src/common/rsvp_log.h src/common/rsvp_error.h
 PI_HDRS = src/pi/rsvp_builder.h src/pi/rsvp_dispatcher.h src/pi/rsvp_parser.h src/pi/rsvp_state.h src/pi/rsvp_state_db.h src/pi/rsvp_state_machine.h src/pi/label_mgr.h src/pi/rsvp_timers.h
 
 SRC = src/main.c src/pi/rsvp_dispatcher.c src/pi/rsvp_parser.c src/pi/rsvp_state_db.c src/pi/rsvp_state_machine.c src/pi/label_mgr.c src/pi/rsvp_builder.c src/pi/rsvp_timers.c src/pd/hal_timer_linux.c src/pd/hal_netlink_linux.c src/common/rsvp_log.c

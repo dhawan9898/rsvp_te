@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 
+#include "common/rsvp_error.h"
 #include "rsvp_protocol.h"
 #include "rsvp_state.h"
 
@@ -37,9 +38,9 @@ struct rsvp_message_info {
 
 /**
  * Parse a raw RSVP packet (including IP header if present).
- * Returns 0 on success, -1 on parse error.
+ * Returns RSVP_SUCCESS on success, or an rsvp_error_t code on parse error.
  */
-int rsvp_parse_packet(uint8_t* buffer, size_t len,
-                      struct rsvp_message_info* info);
+rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
+                               struct rsvp_message_info* info);
 
 #endif /* RSVP_PARSER_H */

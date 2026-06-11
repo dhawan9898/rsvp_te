@@ -1,0 +1,16 @@
+#ifndef RSVP_ERROR_H
+#define RSVP_ERROR_H
+
+typedef enum {
+    RSVP_SUCCESS = 0,
+    RSVP_ERR_MALFORMED_OBJ = -1,
+    RSVP_ERR_MEM_ALLOC = -2,
+    RSVP_ERR_INVALID_PARAM = -3,
+    RSVP_ERR_NOT_FOUND = -4,
+    RSVP_ERR_TIMEOUT = -5,
+    RSVP_ERR_SYS = -6,
+    RSVP_ERR_BUFFER_TOO_SMALL = -7,
+    RSVP_ERR_CHECKSUM = -8
+} rsvp_error_t;
+
+#endif /* RSVP_ERROR_H */

@@ -42,6 +42,10 @@ static void handle_path_message(struct rsvp_message_info* info) {
             psb->ifindex_in = ntohl(info->hop_v4->logical_interface);
         }
 
+        if (info->lsp_name[0] != '\0') {
+            psb->lsp_name = strdup(info->lsp_name);
+        }
+
         psb->cleanup_timer_id = rsvp_timer_start(
             RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, psb_cleanup_timer_cb, psb);
         psb->refresh_timer_id = rsvp_timer_start(
@@ -485,25 +489,26 @@ static void send_path_downstream(struct rsvp_psb* psb) {
 }
 
 void rsvp_initiate_path(struct in_addr* src, struct in_addr* dest,
-                        uint16_t tunnel_id, char* lsp_name) {
-    struct rsvp_path_key* key = calloc(1, sizeof(struct rsvp_path_key));
+                        uint16_t tunnel_id, const char* lsp_name) {
+    struct rsvp_path_key key;
+    memset(&key, 0, sizeof(key));
     struct in_addr ext_id = *src;
 
-    key->session.dest_addr = *dest;
-    key->session.tunnel_id = htons(tunnel_id);
-    key->session.extended_tunnel_id = ext_id;
-    key->sender.source_addr = *src;
-    key->sender.lsp_id = htons(next_lsp_id++);
+    key.session.dest_addr = *dest;
+    key.session.tunnel_id = htons(tunnel_id);
+    key.session.extended_tunnel_id = ext_id;
+    key.sender.source_addr = *src;
+    key.sender.lsp_id = htons(next_lsp_id++);
 
-    struct rsvp_psb* psb = rsvp_psb_find(key);
+    struct rsvp_psb* psb = rsvp_psb_find(&key);
     if (!psb) {
-        psb = rsvp_psb_create(key);
+        psb = rsvp_psb_create(&key);
         if (!psb) return;
         psb->cleanup_timer_id = rsvp_timer_start(
             RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, psb_cleanup_timer_cb, psb);
         psb->refresh_timer_id = rsvp_timer_start(
             RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, psb_refresh_timer_cb, psb);
-        psb->lsp_name = lsp_name;
+        psb->lsp_name = lsp_name ? strdup(lsp_name) : NULL;
     }
 
     send_path_downstream(psb);

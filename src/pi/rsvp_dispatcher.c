@@ -104,7 +104,7 @@ void rsvp_dispatcher_run(void) {
                                  (struct sockaddr*)&src_addr, &addr_len);
                     if (bytes_read > 0) {
                         memset(&info, 0, sizeof(info));
-                        if (rsvp_parse_packet(buffer, bytes_read, &info) == 0) {
+                        if (rsvp_parse_packet(buffer, bytes_read, &info) == RSVP_SUCCESS) {
                             rsvp_handle_message(&info);
                         }
                     } else if (bytes_read < 0 && errno != EINTR) {

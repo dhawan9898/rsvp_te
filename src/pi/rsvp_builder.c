@@ -130,15 +130,9 @@ union net_un {
 };
 
 static uint32_t float_to_net(float value) {
-    union un temp;
+    union net_un temp;
     temp.f = value;
     return htonl(temp.val);
-}
-
-static uint32_t net_to_float(uint32_t value) {
-    union un temp;
-    temp.val = ntohl(value);
-    return temp.f;
 }
 
 int rsvp_builder_add_tspec(struct rsvp_builder* b,
@@ -183,18 +177,6 @@ int rsvp_builder_add_flowspec(struct rsvp_builder* b,
     wire_tspec.max_packet_size = htonl(tspec->max_packet_size);
     return rsvp_builder_add_obj(b, RSVP_CLASS_FLOWSPEC, 2, &wire_tspec,
                                 sizeof(wire_tspec));
-}
-
-int rsvp_builder_add_adspec(struct rsvp_builder* b,
-                            struct rsvp_adspec* adspec) {
-    return rsvp_builder_add_obj(b, RSVP_CLASS_ADSPEC, 2, adspec,
-                                sizeof(*adspec));
-}
-
-int rsvp_builder_add_adspec(struct rsvp_builder* b,
-                            struct rsvp_adspec* adspec) {
-    return rsvp_builder_add_obj(b, RSVP_CLASS_ADSPEC, 2, adspec,
-                                sizeof(*adspec));
 }
 
 uint16_t rsvp_checksum(const void* buf, size_t len) {

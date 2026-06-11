@@ -4,14 +4,20 @@
 #include <stdint.h>
 
 /**
- * HAL callback for when a platform timer expires.
+ * Initialize the hardware/platform timer subsystem.
+ * Returns a file descriptor for polling, or -1 on error.
  */
-typedef void (*hal_timer_cb)(void* data);
+int hal_timer_init(void);
 
 /**
- * Platform-dependent timer functions to be implemented by the PD layer.
+ * Set the next expiration time for the central timer.
+ * timeout_ms is relative to now.
  */
-uint32_t hal_timer_add(uint32_t timeout_ms, hal_timer_cb cb, void* data);
-void hal_timer_remove(uint32_t hal_timer_id);
+void hal_timer_set(uint32_t timeout_ms);
+
+/**
+ * Clear the central timer.
+ */
+void hal_timer_clear(void);
 
 #endif /* HAL_TIMER_H */

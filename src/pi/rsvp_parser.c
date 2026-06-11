@@ -7,106 +7,131 @@
 
 #include "rsvp_builder.h"
 
-int rsvp_parse_packet(uint8_t* buffer, size_t len,
-                      struct rsvp_message_info* info) {
+rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
+                               struct rsvp_message_info* info) {
     if (len < sizeof(struct iphdr)) {
-        return -1;
+        return RSVP_ERR_BUFFER_TOO_SMALL;
     }
 
-    struct iphdr* ip = (struct iphdr*)buffer;
+    const struct iphdr* ip = (const struct iphdr*)buffer;
     size_t ip_hdr_len = ip->ihl * 4;
     if (ip_hdr_len < sizeof(struct iphdr) || ip_hdr_len > len) {
-        return -1;
+        return RSVP_ERR_INVALID_PARAM;
     }
 
     if (len < ip_hdr_len + sizeof(struct rsvp_common_hdr)) {
-        return -1;
+        return RSVP_ERR_BUFFER_TOO_SMALL;
     }
 
-    struct rsvp_common_hdr* rsvp_hdr =
-        (struct rsvp_common_hdr*)(buffer + ip_hdr_len);
+    const struct rsvp_common_hdr* rsvp_hdr =
+        (const struct rsvp_common_hdr*)(buffer + ip_hdr_len);
     size_t rsvp_len = ntohs(rsvp_hdr->length);
     if (rsvp_len < sizeof(struct rsvp_common_hdr)) {
-        return -1;
+        return RSVP_ERR_MALFORMED_OBJ;
     }
     if (ip_hdr_len + rsvp_len > len) {
-        return -1;
+        return RSVP_ERR_BUFFER_TOO_SMALL;
     }
 
-    info->common_hdr = rsvp_hdr;
+    info->common_hdr = (struct rsvp_common_hdr*)rsvp_hdr; /* Cast away const for legacy compatibility */
     info->payload = (uint8_t*)(rsvp_hdr + 1);
     info->payload_len = rsvp_len - sizeof(struct rsvp_common_hdr);
     memset(info->lsp_name, 0, sizeof(info->lsp_name));
 
     /* Verify RSVP version */
     if ((rsvp_hdr->ver_flags >> 4) != RSVP_VERSION) {
-        return -1;
+        return RSVP_ERR_INVALID_PARAM;
     }
 
-    /* Verify checksum */
+    /* Verify checksum non-destructively */
     uint16_t received_checksum = rsvp_hdr->checksum;
-    rsvp_hdr->checksum = 0;
-    uint16_t computed_checksum = rsvp_checksum(rsvp_hdr, rsvp_len);
-    if (received_checksum != computed_checksum && received_checksum != 0) {
-        rsvp_hdr->checksum = received_checksum;
-        return -1; /* Checksum mismatch */
-    }
-    rsvp_hdr->checksum = received_checksum;
+    if (received_checksum != 0) {
+        /* compute_checksum handles masking out the checksum field internally */
+        /* Note: Original code used a specific byte order, standard internet checksum works with native words if careful */
+        /* For simplicity and correctness with the existing builder, we'll copy header */
+        uint8_t hdr_copy[sizeof(struct rsvp_common_hdr)];
+        memcpy(hdr_copy, rsvp_hdr, sizeof(struct rsvp_common_hdr));
+        struct rsvp_common_hdr* chdr = (struct rsvp_common_hdr*)hdr_copy;
+        chdr->checksum = 0;
+        
+        /* Compute over copy of header + rest of buffer */
+        uint32_t sum = 0;
+        const uint16_t* ptr = (const uint16_t*)hdr_copy;
+        for (size_t i = 0; i < sizeof(struct rsvp_common_hdr)/2; i++) {
+            sum += ntohs(ptr[i]);
+        }
+        
+        size_t payload_words = info->payload_len / 2;
+        ptr = (const uint16_t*)info->payload;
+        for (size_t i = 0; i < payload_words; i++) {
+            sum += ntohs(ptr[i]);
+        }
+        
+        if (info->payload_len % 2) {
+            sum += info->payload[info->payload_len - 1] << 8;
+        }
 
-    /* Shallow parse to find objects */
-    uint8_t* obj_ptr = info->payload;
+        while (sum >> 16) {
+            sum = (sum & 0xffff) + (sum >> 16);
+        }
+        uint16_t computed_checksum = htons((uint16_t)(~sum));
+
+        if (received_checksum != computed_checksum) {
+            return RSVP_ERR_CHECKSUM;
+        }
+    }
+
+    /* Strict parse to find objects */
+    const uint8_t* obj_ptr = info->payload;
     size_t remaining = info->payload_len;
-    bool session_found = false;
-    bool sender_found = false;
 
     while (remaining >= sizeof(struct rsvp_obj_hdr)) {
-        struct rsvp_obj_hdr* obj_hdr = (struct rsvp_obj_hdr*)obj_ptr;
+        const struct rsvp_obj_hdr* obj_hdr = (const struct rsvp_obj_hdr*)obj_ptr;
         size_t obj_len = ntohs(obj_hdr->length);
 
         if (obj_len < sizeof(struct rsvp_obj_hdr) || obj_len > remaining) {
-            break;
+            return RSVP_ERR_MALFORMED_OBJ; /* Object length invalid */
         }
 
         size_t aligned_obj_len = RSVP_ALIGN(obj_len);
-        if (aligned_obj_len > remaining) {
-            break;
+        if (aligned_obj_len > remaining && aligned_obj_len != remaining + (remaining % 4 ? 4 - (remaining % 4) : 0)) {
+            /* If it's the last object, the packet might not be perfectly padded to 4 bytes */
+            /* But the object length itself shouldn't exceed remaining payload */
         }
 
-        uint8_t* obj_data = obj_ptr + sizeof(struct rsvp_obj_hdr);
+        const uint8_t* obj_data = obj_ptr + sizeof(struct rsvp_obj_hdr);
 
         switch (obj_hdr->class_num) {
             case RSVP_CLASS_SESSION:
                 if ((obj_hdr->c_type == 1 || obj_hdr->c_type == 7) &&
-                    obj_len >= sizeof(struct rsvp_session_ipv4)) {
+                    obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_session_ipv4)) {
                     info->sess_v4 = (struct rsvp_session_ipv4*)obj_data;
                     memcpy(&info->key.session, info->sess_v4,
                            sizeof(struct rsvp_session_ipv4));
-                    session_found = true;
                 } else if ((obj_hdr->c_type == 2 || obj_hdr->c_type == 8) &&
-                           obj_len >= sizeof(struct rsvp_session_ipv6)) {
+                           obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_session_ipv6)) {
                     info->sess_v6 = (struct rsvp_session_ipv6*)obj_data;
-                    /* TODO: Handle IPv6 key if needed */
                 }
                 break;
 
             case RSVP_CLASS_HOP:
                 if (obj_hdr->c_type == 1 &&
-                    obj_len >= sizeof(struct rsvp_hop_ipv4)) {
+                    obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_hop_ipv4)) {
                     info->hop_v4 = (struct rsvp_hop_ipv4*)obj_data;
                 } else if (obj_hdr->c_type == 2 &&
-                           obj_len >= sizeof(struct rsvp_hop_ipv6)) {
+                           obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_hop_ipv6)) {
                     info->hop_v6 = (struct rsvp_hop_ipv6*)obj_data;
                 }
                 break;
 
             case RSVP_CLASS_TIME_VALUES:
-                if (obj_len >= sizeof(struct rsvp_time_values)) {
+                if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_time_values)) {
                     info->time_values = (struct rsvp_time_values*)obj_data;
                 }
                 break;
 
             case RSVP_CLASS_ERROR_SPEC:
-                if (obj_len >= sizeof(struct rsvp_error_spec_ipv4)) {
+                if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_error_spec_ipv4)) {
                     info->error_spec = (struct rsvp_error_spec_ipv4*)obj_data;
                 }
                 break;
@@ -114,25 +139,24 @@ int rsvp_parse_packet(uint8_t* buffer, size_t len,
             case RSVP_CLASS_SENDER_TEMPLATE:
             case RSVP_CLASS_FILTER_SPEC:
                 if ((obj_hdr->c_type == 1 || obj_hdr->c_type == 7) &&
-                    obj_len >= sizeof(struct rsvp_sender_ipv4)) {
+                    obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_sender_ipv4)) {
                     info->sender_v4 = (struct rsvp_sender_ipv4*)obj_data;
                     memcpy(&info->key.sender, info->sender_v4,
                            sizeof(struct rsvp_sender_ipv4));
-                    sender_found = true;
                 } else if ((obj_hdr->c_type == 2 || obj_hdr->c_type == 8) &&
-                           obj_len >= sizeof(struct rsvp_sender_ipv6)) {
+                           obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_sender_ipv6)) {
                     info->sender_v6 = (struct rsvp_sender_ipv6*)obj_data;
                 }
                 break;
 
             case RSVP_CLASS_SENDER_TSPEC:
-                if (obj_len >= sizeof(struct rsvp_sender_tspec)) {
+                if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_sender_tspec)) {
                     info->tspec = (struct rsvp_sender_tspec*)obj_data;
                 }
                 break;
 
             case RSVP_CLASS_ADSPEC:
-                if (obj_len >= sizeof(struct rsvp_adspec)) {
+                if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_adspec)) {
                     info->adspec = (struct rsvp_adspec*)obj_data;
                 }
                 break;
@@ -145,25 +169,24 @@ int rsvp_parse_packet(uint8_t* buffer, size_t len,
                 break;
 
             case RSVP_CLASS_LABEL:
-                if (obj_len >= sizeof(struct rsvp_label_ipv4)) {
+                if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_label_ipv4)) {
                     info->label = (struct rsvp_label_ipv4*)obj_data;
                 }
                 break;
 
             case RSVP_CLASS_LABEL_REQUEST:
-                if (obj_len >= sizeof(struct rsvp_label_request)) {
+                if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_label_request)) {
                     info->label_req = (struct rsvp_label_request*)obj_data;
                 }
                 break;
 
             case RSVP_CLASS_SESSION_ATTRIB:
                 if (obj_hdr->c_type == 7 &&
-                    obj_len >= sizeof(struct rsvp_session_attribute)) {
+                    obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_session_attribute)) {
                     info->sess_attr = (struct rsvp_session_attribute*)obj_data;
                     if (info->sess_attr->name_length > 0 &&
-                        sizeof(struct rsvp_session_attribute) +
-                                info->sess_attr->name_length <=
-                            (obj_len - sizeof(struct rsvp_obj_hdr))) {
+                        sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_session_attribute) +
+                                info->sess_attr->name_length <= obj_len) {
                         size_t nlen = info->sess_attr->name_length;
                         if (nlen >= sizeof(info->lsp_name))
                             nlen = sizeof(info->lsp_name) - 1;
@@ -171,14 +194,11 @@ int rsvp_parse_packet(uint8_t* buffer, size_t len,
                         info->lsp_name[nlen] = '\0';
                     }
                 } else if (obj_hdr->c_type == 1 &&
-                           obj_len >=
-                               sizeof(struct rsvp_session_attribute_ra)) {
-                    info->sess_attr_ra =
-                        (struct rsvp_session_attribute_ra*)obj_data;
+                           obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_session_attribute_ra)) {
+                    info->sess_attr_ra = (struct rsvp_session_attribute_ra*)obj_data;
                     if (info->sess_attr_ra->name_length > 0 &&
-                        sizeof(struct rsvp_session_attribute_ra) +
-                                info->sess_attr_ra->name_length <=
-                            (obj_len - sizeof(struct rsvp_obj_hdr))) {
+                        sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_session_attribute_ra) +
+                                info->sess_attr_ra->name_length <= obj_len) {
                         size_t nlen = info->sess_attr_ra->name_length;
                         if (nlen >= sizeof(info->lsp_name))
                             nlen = sizeof(info->lsp_name) - 1;
@@ -192,12 +212,13 @@ int rsvp_parse_packet(uint8_t* buffer, size_t len,
                 break;
         }
 
+        /* Prevent infinite loop if aligned_obj_len is 0 (though we checked obj_len >= sizeof(hdr)) */
+        if (aligned_obj_len == 0) break;
+        if (aligned_obj_len > remaining) break;
+        
         obj_ptr += aligned_obj_len;
         remaining -= aligned_obj_len;
     }
 
-    (void)session_found;
-    (void)sender_found;
-
-    return 0;
+    return RSVP_SUCCESS;
 }
