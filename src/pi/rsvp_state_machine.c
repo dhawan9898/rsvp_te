@@ -527,8 +527,12 @@ static void psb_refresh_timer_cb(void* arg) {
     psb->refresh_timer_id = rsvp_timer_start(
         RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, psb_refresh_timer_cb, psb);
 
-    LOG_INFO("Refreshing PATH downstream...");
-    send_path_downstream(psb);
+    if (psb->prev_hop.neighbor_addr.s_addr == 0) {
+        /* We are Ingress: Trigger periodic refresh */
+        LOG_INFO("Ingress: Refreshing PATH downstream...");
+        send_path_downstream(psb);
+    }
+    /* Transit nodes do not trigger refreshes; they just forward when they receive them. */
 }
 
 static void psb_cleanup_timer_cb(void* arg) {
@@ -549,10 +553,14 @@ static void rsb_refresh_timer_cb(void* arg) {
     struct rsvp_rsb* rsb = (struct rsvp_rsb*)arg;
     rsb->refresh_timer_id = rsvp_timer_start(
         RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, rsb_refresh_timer_cb, rsb);
+
     if (rsb->associated_psb &&
         rsb->associated_psb->prev_hop.neighbor_addr.s_addr != 0) {
+        /* Transit or Egress: Send periodic RESV upstream */
+        LOG_INFO("Refreshing RESV upstream...");
         send_resv_upstream(rsb);
     }
+    /* Ingress nodes do not refresh upstream. */
 }
 
 static void rsb_cleanup_timer_cb(void* arg) {
