@@ -124,10 +124,21 @@ int rsvp_builder_add_time_values(struct rsvp_builder* b, uint32_t refresh_ms) {
     return rsvp_builder_add_obj(b, RSVP_CLASS_TIME_VALUES, 1, &tv, sizeof(tv));
 }
 
-static void float_to_net(float value, uint32_t* out_bits) {
-    uint32_t bits;
-    memcpy(&bits, &value, sizeof(bits));
-    *out_bits = htonl(bits);
+union net_un {
+    uint32_t val;
+    float f;
+};
+
+static uint32_t float_to_net(float value) {
+    union un temp;
+    temp.f = value;
+    return htonl(temp.val);
+}
+
+static uint32_t net_to_float(uint32_t value) {
+    union un temp;
+    temp.val = ntohl(value);
+    return temp.f;
 }
 
 int rsvp_builder_add_tspec(struct rsvp_builder* b,
@@ -139,17 +150,45 @@ int rsvp_builder_add_tspec(struct rsvp_builder* b,
     wire_tspec.param_length = htons(tspec->param_length);
 
     uint32_t net_value;
-    float_to_net(tspec->token_bucket_rate, &net_value);
+    net_value = float_to_net(tspec->token_bucket_rate);
     memcpy(&wire_tspec.token_bucket_rate, &net_value, sizeof(net_value));
-    float_to_net(tspec->token_bucket_size, &net_value);
+    net_value = float_to_net(tspec->token_bucket_size);
     memcpy(&wire_tspec.token_bucket_size, &net_value, sizeof(net_value));
-    float_to_net(tspec->peak_data_rate, &net_value);
+    net_value = float_to_net(tspec->peak_data_rate);
     memcpy(&wire_tspec.peak_data_rate, &net_value, sizeof(net_value));
 
     wire_tspec.min_policed_unit = htonl(tspec->min_policed_unit);
     wire_tspec.max_packet_size = htonl(tspec->max_packet_size);
     return rsvp_builder_add_obj(b, RSVP_CLASS_SENDER_TSPEC, 2, &wire_tspec,
                                 sizeof(wire_tspec));
+}
+
+int rsvp_builder_add_flowspec(struct rsvp_builder* b,
+                           struct rsvp_sender_tspec* tspec) {
+    struct rsvp_sender_tspec wire_tspec;
+    memcpy(&wire_tspec, tspec, sizeof(wire_tspec));
+    wire_tspec.length = htons((sizeof(wire_tspec) / 4) - 1);
+    wire_tspec.svc_length = htons(tspec->svc_length);
+    wire_tspec.param_length = htons(tspec->param_length);
+
+    uint32_t net_value;
+    net_value = float_to_net(tspec->token_bucket_rate);
+    memcpy(&wire_tspec.token_bucket_rate, &net_value, sizeof(net_value));
+    net_value = float_to_net(tspec->token_bucket_size);
+    memcpy(&wire_tspec.token_bucket_size, &net_value, sizeof(net_value));
+    net_value = float_to_net(tspec->peak_data_rate);
+    memcpy(&wire_tspec.peak_data_rate, &net_value, sizeof(net_value));
+
+    wire_tspec.min_policed_unit = htonl(tspec->min_policed_unit);
+    wire_tspec.max_packet_size = htonl(tspec->max_packet_size);
+    return rsvp_builder_add_obj(b, RSVP_CLASS_FLOWSPEC, 2, &wire_tspec,
+                                sizeof(wire_tspec));
+}
+
+int rsvp_builder_add_adspec(struct rsvp_builder* b,
+                            struct rsvp_adspec* adspec) {
+    return rsvp_builder_add_obj(b, RSVP_CLASS_ADSPEC, 2, adspec,
+                                sizeof(*adspec));
 }
 
 int rsvp_builder_add_adspec(struct rsvp_builder* b,

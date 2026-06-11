@@ -345,7 +345,7 @@ static void send_resv_upstream(struct rsvp_rsb* rsb) {
     struct rsvp_sender_tspec flow_spec;
     memset(&flow_spec, 0, sizeof(flow_spec));
     flow_spec.version = 0;
-    flow_spec.length = (sizeof(tspec) / 4) - 1;
+    flow_spec.length = (sizeof(flow_spec) / 4) - 1;
     flow_spec.service_hdr = 5;
     flow_spec.svc_length = 6;
     flow_spec.param_id = 127;
@@ -355,7 +355,7 @@ static void send_resv_upstream(struct rsvp_rsb* rsb) {
     flow_spec.peak_data_rate = 1000000.0f;
     flow_spec.min_policed_unit = 64;
     flow_spec.max_packet_size = 1500;
-    rsvp_builder_add_tspec(&b, &flow_spec);
+    rsvp_builder_add_flowspec(&b, &flow_spec);
 
     /* FILTER_SPEC uses C-Type 7 for IPv4 LSP */
     rsvp_builder_add_obj(&b, RSVP_CLASS_FILTER_SPEC, 7, &psb->key.sender,

@@ -43,6 +43,8 @@ int rsvp_builder_add_style(struct rsvp_builder* b, uint32_t style_val);
 int rsvp_builder_add_time_values(struct rsvp_builder* b, uint32_t refresh_ms);
 int rsvp_builder_add_tspec(struct rsvp_builder* b,
                            struct rsvp_sender_tspec* tspec);
+int rsvp_builder_add_flowspec(struct rsvp_builder* b,
+                           struct rsvp_sender_tspec* tspec);
 int rsvp_builder_add_adspec(struct rsvp_builder* b, struct rsvp_adspec* adspec);
 
 /**
