@@ -72,6 +72,14 @@ static void handle_path_message(struct rsvp_message_info* info) {
             if (rsb) {
                 rsb->associated_psb = psb;
                 psb->associated_rsb = rsb;
+
+                rsb->cleanup_timer_id = rsvp_timer_start(
+                    RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, rsb_cleanup_timer_cb,
+                    rsb);
+                rsb->refresh_timer_id = rsvp_timer_start(
+                    RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, rsb_refresh_timer_cb,
+                    rsb);
+
                 send_resv_upstream(rsb);
             }
         }
@@ -519,15 +527,15 @@ static void psb_refresh_timer_cb(void* arg) {
     psb->refresh_timer_id = rsvp_timer_start(
         RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, psb_refresh_timer_cb, psb);
 
-    if (psb->prev_hop.neighbor_addr.s_addr == 0) {
-        /* We are Ingress */
-        LOG_INFO("Ingress: Sending PATH refresh...");
-        send_path_downstream(psb);
-    }
+    LOG_INFO("Refreshing PATH downstream...");
+    send_path_downstream(psb);
 }
 
 static void psb_cleanup_timer_cb(void* arg) {
     struct rsvp_psb* psb = (struct rsvp_psb*)arg;
+    LOG_INFO("PSB Cleanup Timer Expired: Tearing down state");
+    propagate_path_tear(psb);
+
     rsvp_timer_stop(psb->refresh_timer_id);
     if (psb->associated_rsb) {
         rsvp_timer_stop(psb->associated_rsb->refresh_timer_id);
@@ -549,6 +557,9 @@ static void rsb_refresh_timer_cb(void* arg) {
 
 static void rsb_cleanup_timer_cb(void* arg) {
     struct rsvp_rsb* rsb = (struct rsvp_rsb*)arg;
+    LOG_INFO("RSB Cleanup Timer Expired: Tearing down state");
+    propagate_resv_tear(rsb);
+
     rsvp_timer_stop(rsb->refresh_timer_id);
     if (rsb->associated_psb) rsb->associated_psb->associated_rsb = NULL;
     if (rsb->label_in != 0) {
