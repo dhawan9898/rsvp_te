@@ -1,20 +1,20 @@
 #include "rsvp_dispatcher.h"
-#include "rsvp_parser.h"
-#include "rsvp_state_machine.h"
-#include "hal/hal_netlink.h"
-#include "pi/rsvp_timers.h"
 
-#include "common/rsvp_log.h"
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
 #include <errno.h>
-#include <poll.h>
-
+#include <netinet/in.h>
 #include <netinet/ip.h>
+#include <poll.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include "common/rsvp_log.h"
+#include "hal/hal_netlink.h"
+#include "pi/rsvp_timers.h"
+#include "rsvp_parser.h"
+#include "rsvp_state_machine.h"
 
 #define RSVP_PROTOCOL 46
 #define MAX_RSVP_PACKET_SIZE 4096
@@ -30,12 +30,15 @@ int rsvp_dispatcher_init(void) {
         return -1;
     }
 
-    if (setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) < 0) {
+    if (setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) <
+        0) {
         LOG_ERROR("Failed to set IP_HDRINCL: %s", strerror(errno));
-        /* Continue anyway, but rsvp_send_packet will fail or send wrong header */
+        /* Continue anyway, but rsvp_send_packet will fail or send wrong header
+         */
     }
 
-    if (setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_ROUTER_ALERT, &one, sizeof(one)) < 0) {
+    if (setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_ROUTER_ALERT, &one,
+                   sizeof(one)) < 0) {
         LOG_ERROR("Failed to set IP_ROUTER_ALERT: %s", strerror(errno));
     }
 
@@ -56,7 +59,7 @@ void rsvp_dispatcher_run(void) {
 
     while (1) {
         nfds = 0;
-        
+
         /* Raw RSVP Socket */
         fds[nfds].fd = rsvp_raw_sock;
         fds[nfds].events = POLLIN;
@@ -84,7 +87,8 @@ void rsvp_dispatcher_run(void) {
 
         for (int i = 0; i < nfds; i++) {
             if (fds[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-                LOG_ERROR("poll event error on fd %d: revents=0x%x", fds[i].fd, fds[i].revents);
+                LOG_ERROR("poll event error on fd %d: revents=0x%x", fds[i].fd,
+                          fds[i].revents);
                 continue;
             }
 
@@ -95,8 +99,9 @@ void rsvp_dispatcher_run(void) {
                     socklen_t addr_len = sizeof(src_addr);
                     struct rsvp_message_info info;
 
-                    ssize_t bytes_read = recvfrom(rsvp_raw_sock, buffer, sizeof(buffer), 0,
-                                                  (struct sockaddr *)&src_addr, &addr_len);
+                    ssize_t bytes_read =
+                        recvfrom(rsvp_raw_sock, buffer, sizeof(buffer), 0,
+                                 (struct sockaddr*)&src_addr, &addr_len);
                     if (bytes_read > 0) {
                         memset(&info, 0, sizeof(info));
                         if (rsvp_parse_packet(buffer, bytes_read, &info) == 0) {
@@ -116,9 +121,10 @@ void rsvp_dispatcher_run(void) {
     }
 }
 
-int rsvp_send_packet(struct in_addr *src, struct in_addr *dest, uint8_t *buffer, size_t len, bool use_rao) {
+int rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t* buffer,
+                     size_t len, bool use_rao) {
     uint8_t packet[MAX_RSVP_PACKET_SIZE];
-    struct iphdr *iph = (struct iphdr *)packet;
+    struct iphdr* iph = (struct iphdr*)packet;
     struct sockaddr_in dest_addr;
     int optlen = use_rao ? 4 : 0;
     size_t total_len = sizeof(struct iphdr) + optlen + len;
@@ -138,18 +144,18 @@ int rsvp_send_packet(struct in_addr *src, struct in_addr *dest, uint8_t *buffer,
     iph->tot_len = htons(total_len);
     iph->id = 0;
     iph->frag_off = 0;
-    
+
     /* Try to get TTL from RSVP header */
-    struct rsvp_common_hdr *rsvp_hdr = (struct rsvp_common_hdr *)buffer;
+    struct rsvp_common_hdr* rsvp_hdr = (struct rsvp_common_hdr*)buffer;
     iph->ttl = (len >= sizeof(struct rsvp_common_hdr)) ? rsvp_hdr->ttl : 255;
-    
+
     iph->protocol = RSVP_PROTOCOL;
     iph->saddr = src->s_addr;
     iph->daddr = dest->s_addr;
     iph->check = 0; /* Kernel will fill */
 
     if (use_rao) {
-        uint8_t *options = packet + sizeof(struct iphdr);
+        uint8_t* options = packet + sizeof(struct iphdr);
         options[0] = 148; /* RFC 2113: Router Alert Option */
         options[1] = 4;
         options[2] = 0;
@@ -162,16 +168,16 @@ int rsvp_send_packet(struct in_addr *src, struct in_addr *dest, uint8_t *buffer,
     dest_addr.sin_family = AF_INET;
     dest_addr.sin_addr = *dest;
 
-    ssize_t bytes_sent = sendto(rsvp_raw_sock, packet, total_len, 0,
-                                (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    ssize_t bytes_sent =
+        sendto(rsvp_raw_sock, packet, total_len, 0,
+               (struct sockaddr*)&dest_addr, sizeof(dest_addr));
 
     if (bytes_sent < 0) {
         LOG_ERROR("sendto error: %s", strerror(errno));
         return -1;
     }
 
-    LOG_INFO("Sent %zd bytes to %s from %s (RAO: %s)", 
-             bytes_sent, inet_ntoa(*dest), inet_ntoa(*src), use_rao ? "on" : "off");
+    LOG_INFO("Sent %zd bytes to %s from %s (RAO: %s)", bytes_sent,
+             inet_ntoa(*dest), inet_ntoa(*src), use_rao ? "on" : "off");
     return 0;
 }
-

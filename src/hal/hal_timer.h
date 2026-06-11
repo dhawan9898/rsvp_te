@@ -6,12 +6,12 @@
 /**
  * HAL callback for when a platform timer expires.
  */
-typedef void (*hal_timer_cb)(void *data);
+typedef void (*hal_timer_cb)(void* data);
 
 /**
  * Platform-dependent timer functions to be implemented by the PD layer.
  */
-uint32_t hal_timer_add(uint32_t timeout_ms, hal_timer_cb cb, void *data);
-void     hal_timer_remove(uint32_t hal_timer_id);
+uint32_t hal_timer_add(uint32_t timeout_ms, hal_timer_cb cb, void* data);
+void hal_timer_remove(uint32_t hal_timer_id);
 
 #endif /* HAL_TIMER_H */

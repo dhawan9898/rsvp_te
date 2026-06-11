@@ -1,21 +1,22 @@
 #include "rsvp_timers.h"
-#include "hal/hal_timer.h"
-#include <stdlib.h>
+
 #include <errno.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "common/rsvp_log.h"
-#include <unistd.h>
+#include "hal/hal_timer.h"
 
 #define MAX_TIMERS 100
 
 struct rsvp_timer_entry {
-    uint32_t          id;
+    uint32_t id;
     rsvp_timer_type_t type;
-    rsvp_timer_cb     cb;
-    void             *arg;
-    int               fd;
-    bool              active;
+    rsvp_timer_cb cb;
+    void* arg;
+    int fd;
+    bool active;
 };
 
 static struct rsvp_timer_entry timers[MAX_TIMERS];
@@ -27,7 +28,8 @@ void rsvp_timer_init(void) {
     LOG_INFO("RSVP Timer system initialized");
 }
 
-uint32_t rsvp_timer_start(rsvp_timer_type_t type, uint32_t timeout_ms, rsvp_timer_cb cb, void *arg) {
+uint32_t rsvp_timer_start(rsvp_timer_type_t type, uint32_t timeout_ms,
+                          rsvp_timer_cb cb, void* arg) {
     for (int i = 0; i < MAX_TIMERS; i++) {
         if (!timers[i].active) {
             timers[i].fd = (int)hal_timer_add(timeout_ms, NULL, NULL);
@@ -60,7 +62,7 @@ void rsvp_timer_reset(uint32_t timer_id, uint32_t timeout_ms) {
     /* In a full implementation, we'd update the timerfd here */
 }
 
-int rsvp_timer_get_fds(int *fds, int max_fds) {
+int rsvp_timer_get_fds(int* fds, int max_fds) {
     int count = 0;
     for (int i = 0; i < MAX_TIMERS && count < max_fds; i++) {
         if (timers[i].active) {
@@ -92,4 +94,3 @@ void rsvp_timer_handle_exp(int fd) {
         }
     }
 }
-

@@ -1,18 +1,18 @@
-#include "hal/hal_timer.h"
-
-#include "common/rsvp_log.h"
+#include <errno.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
 #include <sys/timerfd.h>
 #include <time.h>
-#include <errno.h>
+#include <unistd.h>
+
+#include "common/rsvp_log.h"
+#include "hal/hal_timer.h"
 
 /**
  * Linux implementation of HAL timer using timerfd.
  */
 
-uint32_t hal_timer_add(uint32_t timeout_ms, hal_timer_cb cb, void *data) {
+uint32_t hal_timer_add(uint32_t timeout_ms, hal_timer_cb cb, void* data) {
     (void)cb;
     (void)data;
     int tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
@@ -45,4 +45,3 @@ void hal_timer_remove(uint32_t hal_timer_id) {
         close((int)hal_timer_id);
     }
 }
-

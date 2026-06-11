@@ -1,15 +1,15 @@
-#include "hal/hal_netlink.h"
-
-#include "common/rsvp_log.h"
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
+#include <arpa/inet.h>
 #include <errno.h>
-#include <sys/socket.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
-#include <arpa/inet.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include "common/rsvp_log.h"
+#include "hal/hal_netlink.h"
 
 #define MAX_INTERFACES 32
 
@@ -49,7 +49,7 @@ int hal_netlink_init(void) {
     sa.nl_family = AF_NETLINK;
     sa.nl_groups = RTMGRP_LINK | RTMGRP_IPV4_IFADDR;
 
-    if (bind(nl_sock, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+    if (bind(nl_sock, (struct sockaddr*)&sa, sizeof(sa)) < 0) {
         LOG_ERROR("bind(AF_NETLINK): %s", strerror(errno));
         close(nl_sock);
         return -1;
@@ -62,13 +62,11 @@ int hal_netlink_init(void) {
     return 0;
 }
 
-int hal_netlink_get_fd(void) {
-    return nl_sock;
-}
+int hal_netlink_get_fd(void) { return nl_sock; }
 
 void hal_netlink_process(void) {
     char buf[4096];
-    struct nlmsghdr *nh;
+    struct nlmsghdr* nh;
     ssize_t len;
 
     len = recv(nl_sock, buf, sizeof(buf), 0);
@@ -77,27 +75,30 @@ void hal_netlink_process(void) {
         return;
     }
 
-    for (nh = (struct nlmsghdr *)buf; NLMSG_OK(nh, len); nh = NLMSG_NEXT(nh, len)) {
+    for (nh = (struct nlmsghdr*)buf; NLMSG_OK(nh, len);
+         nh = NLMSG_NEXT(nh, len)) {
         if (nh->nlmsg_type == NLMSG_DONE) break;
         if (nh->nlmsg_type == NLMSG_ERROR) continue;
 
         if (nh->nlmsg_type == RTM_NEWADDR) {
-            struct ifaddrmsg *ifa = NLMSG_DATA(nh);
-            struct rtattr *rta = (struct rtattr *)IFA_RTA(ifa);
+            struct ifaddrmsg* ifa = NLMSG_DATA(nh);
+            struct rtattr* rta = (struct rtattr*)IFA_RTA(ifa);
             int rta_len = IFA_PAYLOAD(nh);
 
             for (; RTA_OK(rta, rta_len); rta = RTA_NEXT(rta, rta_len)) {
                 if (rta->rta_type == IFA_LOCAL) {
                     int idx = find_iface_slot(ifa->ifa_index);
                     if (idx < 0) {
-                        LOG_INFO("Netlink: interface cache full, ignoring if %d", ifa->ifa_index);
+                        LOG_INFO(
+                            "Netlink: interface cache full, ignoring if %d",
+                            ifa->ifa_index);
                         continue;
                     }
                     ifaces[idx].ifindex = ifa->ifa_index;
-                    ifaces[idx].addr = *(struct in_addr *)RTA_DATA(rta);
+                    ifaces[idx].addr = *(struct in_addr*)RTA_DATA(rta);
                     ifaces[idx].active = true;
                     LOG_INFO("Netlink: Cache updated for if %d: %s",
-                           ifa->ifa_index, inet_ntoa(ifaces[idx].addr));
+                             ifa->ifa_index, inet_ntoa(ifaces[idx].addr));
                 }
             }
         }
@@ -107,7 +108,7 @@ void hal_netlink_process(void) {
 #include <ifaddrs.h>
 #include <net/if.h>
 
-int hal_netlink_get_local_addr(int ifindex, struct in_addr *addr) {
+int hal_netlink_get_local_addr(int ifindex, struct in_addr* addr) {
     struct ifaddrs *ifaddr, *ifa;
     if (getifaddrs(&ifaddr) == -1) {
         return -1;
@@ -116,7 +117,7 @@ int hal_netlink_get_local_addr(int ifindex, struct in_addr *addr) {
         if (ifa->ifa_addr == NULL) continue;
         if (ifa->ifa_addr->sa_family == AF_INET) {
             if ((int)if_nametoindex(ifa->ifa_name) == ifindex) {
-                struct sockaddr_in *s4 = (struct sockaddr_in *)ifa->ifa_addr;
+                struct sockaddr_in* s4 = (struct sockaddr_in*)ifa->ifa_addr;
                 *addr = s4->sin_addr;
                 freeifaddrs(ifaddr);
                 return 0;
@@ -127,7 +128,7 @@ int hal_netlink_get_local_addr(int ifindex, struct in_addr *addr) {
     return -1;
 }
 
-bool hal_netlink_is_local_addr(struct in_addr *addr) {
+bool hal_netlink_is_local_addr(struct in_addr* addr) {
     struct ifaddrs *ifaddr, *ifa;
     if (getifaddrs(&ifaddr) == -1) {
         return false;
@@ -135,7 +136,7 @@ bool hal_netlink_is_local_addr(struct in_addr *addr) {
     for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
         if (ifa->ifa_addr == NULL) continue;
         if (ifa->ifa_addr->sa_family == AF_INET) {
-            struct sockaddr_in *s4 = (struct sockaddr_in *)ifa->ifa_addr;
+            struct sockaddr_in* s4 = (struct sockaddr_in*)ifa->ifa_addr;
             if (s4->sin_addr.s_addr == addr->s_addr) {
                 freeifaddrs(ifaddr);
                 return true;
@@ -146,7 +147,7 @@ bool hal_netlink_is_local_addr(struct in_addr *addr) {
     return false;
 }
 
-int hal_netlink_get_egress_if(struct in_addr *dest, struct in_addr *next_hop) {
+int hal_netlink_get_egress_if(struct in_addr* dest, struct in_addr* next_hop) {
     struct {
         struct nlmsghdr nlh;
         struct rtmsg rtm;
@@ -162,7 +163,8 @@ int hal_netlink_get_egress_if(struct in_addr *dest, struct in_addr *next_hop) {
     req.rtm.rtm_family = AF_INET;
     req.rtm.rtm_dst_len = 32;
 
-    struct rtattr *rta = (struct rtattr *)(((char *)&req) + NLMSG_ALIGN(req.nlh.nlmsg_len));
+    struct rtattr* rta =
+        (struct rtattr*)(((char*)&req) + NLMSG_ALIGN(req.nlh.nlmsg_len));
     rta->rta_type = RTA_DST;
     rta->rta_len = RTA_LENGTH(4);
     memcpy(RTA_DATA(rta), &dest->s_addr, 4);
@@ -175,7 +177,8 @@ int hal_netlink_get_egress_if(struct in_addr *dest, struct in_addr *next_hop) {
     memset(&sa, 0, sizeof(sa));
     sa.nl_family = AF_NETLINK;
 
-    if (sendto(sock, &req, req.nlh.nlmsg_len, 0, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+    if (sendto(sock, &req, req.nlh.nlmsg_len, 0, (struct sockaddr*)&sa,
+               sizeof(sa)) < 0) {
         close(sock);
         return -1;
     }
@@ -189,21 +192,24 @@ int hal_netlink_get_egress_if(struct in_addr *dest, struct in_addr *next_hop) {
     int ifindex = -1;
     *next_hop = *dest;
 
-    struct nlmsghdr *nh;
-    for (nh = (struct nlmsghdr *)reply; NLMSG_OK(nh, len); nh = NLMSG_NEXT(nh, len)) {
+    struct nlmsghdr* nh;
+    for (nh = (struct nlmsghdr*)reply; NLMSG_OK(nh, len);
+         nh = NLMSG_NEXT(nh, len)) {
         if (nh->nlmsg_type == NLMSG_ERROR) {
             return -1;
         }
         if (nh->nlmsg_type == RTM_NEWROUTE) {
-            struct rtmsg *rtm = NLMSG_DATA(nh);
+            struct rtmsg* rtm = NLMSG_DATA(nh);
             int rta_len = RTM_PAYLOAD(nh);
-            struct rtattr *rtAttr = RTM_RTA(rtm);
+            struct rtattr* rtAttr = RTM_RTA(rtm);
 
-            for (; RTA_OK(rtAttr, rta_len); rtAttr = RTA_NEXT(rtAttr, rta_len)) {
+            for (; RTA_OK(rtAttr, rta_len);
+                 rtAttr = RTA_NEXT(rtAttr, rta_len)) {
                 if (rtAttr->rta_type == RTA_OIF) {
-                    ifindex = *(int *)RTA_DATA(rtAttr);
+                    ifindex = *(int*)RTA_DATA(rtAttr);
                 } else if (rtAttr->rta_type == RTA_GATEWAY) {
-                    memcpy(&next_hop->s_addr, RTA_DATA(rtAttr), sizeof(next_hop->s_addr));
+                    memcpy(&next_hop->s_addr, RTA_DATA(rtAttr),
+                           sizeof(next_hop->s_addr));
                 }
             }
             if (ifindex >= 0) {
@@ -215,9 +221,10 @@ int hal_netlink_get_egress_if(struct in_addr *dest, struct in_addr *next_hop) {
     return -1;
 }
 
-int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex, struct in_addr *next_hop) {
+int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex,
+                     struct in_addr* next_hop) {
     LOG_INFO("[HAL-Linux] Installing MPLS: in=%u, out=%u, if=%d, next_hop=%s",
-           in_label, out_label, out_ifindex, inet_ntoa(*next_hop));
+             in_label, out_label, out_ifindex, inet_ntoa(*next_hop));
     /* Real implementation would use RTM_NEWROUTE with AF_MPLS */
     return 0;
 }

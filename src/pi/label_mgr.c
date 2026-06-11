@@ -1,4 +1,5 @@
 #include "label_mgr.h"
+
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,7 +7,7 @@
 static uint32_t label_min = 1000;
 static uint32_t label_max = 2000;
 static uint32_t label_next = 1000;
-static uint8_t *label_bitmap = NULL;
+static uint8_t* label_bitmap = NULL;
 static size_t label_bitmap_size = 0;
 
 static inline bool label_in_range(uint32_t label) {

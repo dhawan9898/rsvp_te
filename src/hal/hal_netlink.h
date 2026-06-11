@@ -1,9 +1,9 @@
 #ifndef HAL_NETLINK_H
 #define HAL_NETLINK_H
 
+#include <netinet/in.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <netinet/in.h>
 
 /**
  * Initialize Netlink socket for interface/address monitoring.
@@ -23,22 +23,23 @@ void hal_netlink_process(void);
 /**
  * Get the local address for a given ifindex.
  */
-int hal_netlink_get_local_addr(int ifindex, struct in_addr *addr);
+int hal_netlink_get_local_addr(int ifindex, struct in_addr* addr);
 
 /**
  * Get the ifindex for a given destination address (route lookup).
  */
-int hal_netlink_get_egress_if(struct in_addr *dest, struct in_addr *next_hop);
+int hal_netlink_get_egress_if(struct in_addr* dest, struct in_addr* next_hop);
 
 /**
  * Check if the given address is a local interface address.
  */
-bool hal_netlink_is_local_addr(struct in_addr *addr);
+bool hal_netlink_is_local_addr(struct in_addr* addr);
 
 /**
  * Install an MPLS label (swap or push) in the data plane.
  */
-int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex, struct in_addr *next_hop);
+int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex,
+                     struct in_addr* next_hop);
 
 /**
  * Remove an MPLS label from the data plane.

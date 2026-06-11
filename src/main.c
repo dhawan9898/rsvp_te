@@ -1,15 +1,15 @@
+#include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
+#include <unistd.h>
+
+#include "common/rsvp_log.h"
+#include "pi/label_mgr.h"
 #include "pi/rsvp_dispatcher.h"
 #include "pi/rsvp_state_db.h"
-#include "pi/label_mgr.h"
-#include "pi/rsvp_timers.h"
-
 #include "pi/rsvp_state_machine.h"
-#include "common/rsvp_log.h"
-#include <arpa/inet.h>
+#include "pi/rsvp_timers.h"
 
 #define MAX_TUNNELS 65536
 static uint8_t tunnel_bitmap[MAX_TUNNELS / 8] = {0};
@@ -30,7 +30,7 @@ static uint16_t allocate_tunnel_id(void) {
     return 0; /* Full */
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     rsvp_set_log_level(LOG_LEVEL_DEBUG);
     LOG_INFO("Starting RSVP-TE Daemon...");
 
@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
 
         inet_aton(argv[1], &src);
         inet_aton(argv[2], &dest);
-        
+
         uint16_t tunnel_id = allocate_tunnel_id();
         if (tunnel_id == 0) {
             LOG_ERROR("No available tunnel IDs!");
@@ -66,7 +66,7 @@ int main(int argc, char *argv[]) {
     }
 
     LOG_INFO("RSVP-TE Daemon initialized. Entering main loop...");
-    
+
     /* For now, just a simple loop or call the dispatcher loop */
     rsvp_dispatcher_run();
 

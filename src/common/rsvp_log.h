@@ -11,11 +11,16 @@ typedef enum {
 } rsvp_log_level_t;
 
 void rsvp_set_log_level(rsvp_log_level_t level);
-void rsvp_log(rsvp_log_level_t level, const char *func, int line, const char *format, ...);
+void rsvp_log(rsvp_log_level_t level, const char* func, int line,
+              const char* format, ...);
 
-#define LOG_DEBUG(fmt, ...) rsvp_log(LOG_LEVEL_DEBUG, __func__, __LINE__, fmt, ##__VA_ARGS__)
-#define LOG_INFO(fmt, ...)  rsvp_log(LOG_LEVEL_INFO, __func__, __LINE__, fmt, ##__VA_ARGS__)
-#define LOG_WARN(fmt, ...)  rsvp_log(LOG_LEVEL_WARN, __func__, __LINE__, fmt, ##__VA_ARGS__)
-#define LOG_ERROR(fmt, ...) rsvp_log(LOG_LEVEL_ERROR, __func__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_DEBUG(fmt, ...) \
+    rsvp_log(LOG_LEVEL_DEBUG, __func__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_INFO(fmt, ...) \
+    rsvp_log(LOG_LEVEL_INFO, __func__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_WARN(fmt, ...) \
+    rsvp_log(LOG_LEVEL_WARN, __func__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_ERROR(fmt, ...) \
+    rsvp_log(LOG_LEVEL_ERROR, __func__, __LINE__, fmt, ##__VA_ARGS__)
 
 #endif /* RSVP_LOG_H */
