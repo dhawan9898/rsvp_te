@@ -46,35 +46,28 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
     /* Verify checksum non-destructively */
     uint16_t received_checksum = rsvp_hdr->checksum;
     if (received_checksum != 0) {
-        /* compute_checksum handles masking out the checksum field internally */
-        /* Note: Original code used a specific byte order, standard internet checksum works with native words if careful */
-        /* For simplicity and correctness with the existing builder, we'll copy header */
         uint8_t hdr_copy[sizeof(struct rsvp_common_hdr)];
         memcpy(hdr_copy, rsvp_hdr, sizeof(struct rsvp_common_hdr));
         struct rsvp_common_hdr* chdr = (struct rsvp_common_hdr*)hdr_copy;
         chdr->checksum = 0;
-        
-        /* Compute over copy of header + rest of buffer */
-        uint32_t sum = 0;
-        const uint16_t* ptr = (const uint16_t*)hdr_copy;
-        for (size_t i = 0; i < sizeof(struct rsvp_common_hdr)/2; i++) {
-            sum += ntohs(ptr[i]);
-        }
-        
-        size_t payload_words = info->payload_len / 2;
-        ptr = (const uint16_t*)info->payload;
-        for (size_t i = 0; i < payload_words; i++) {
-            sum += ntohs(ptr[i]);
-        }
-        
-        if (info->payload_len % 2) {
-            sum += info->payload[info->payload_len - 1] << 8;
-        }
 
-        while (sum >> 16) {
-            sum = (sum & 0xffff) + (sum >> 16);
+        /* Compute checksum over header (with checksum=0) and payload */
+        /* rsvp_checksum is byte-order agnostic, but we need to combine its parts */
+        
+        /* Instead of re-implementing, let's use the buffer directly if possible, 
+           but we need to zero out the checksum. Let's use a temporary buffer for the whole RSVP message 
+           if it's small, or just do it in two parts if we want to be very efficient. */
+        
+        /* Efficiency: Calculate in two parts and merge */
+        uint16_t h_cs = rsvp_checksum(hdr_copy, sizeof(struct rsvp_common_hdr));
+        uint16_t p_cs = rsvp_checksum(info->payload, info->payload_len);
+        
+        /* Merging RFC 1071 checksums: sum of inverse, then inverse again */
+        uint32_t combined = (uint32_t)ntohs(~h_cs) + (uint32_t)ntohs(~p_cs);
+        while (combined >> 16) {
+            combined = (combined & 0xffff) + (combined >> 16);
         }
-        uint16_t computed_checksum = htons((uint16_t)(~sum));
+        uint16_t computed_checksum = htons((uint16_t)(~combined));
 
         if (received_checksum != computed_checksum) {
             return RSVP_ERR_CHECKSUM;
@@ -218,6 +211,21 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
         
         obj_ptr += aligned_obj_len;
         remaining -= aligned_obj_len;
+    }
+
+    /* Strict Validation for mandatory objects based on message type */
+    switch (info->common_hdr->msg_type) {
+        case RSVP_MSG_PATH:
+            if (!info->sess_v4 && !info->sess_v6) return RSVP_ERR_MALFORMED_OBJ;
+            if (!info->sender_v4 && !info->sender_v6) return RSVP_ERR_MALFORMED_OBJ;
+            break;
+        case RSVP_MSG_RESV:
+            if (!info->sess_v4 && !info->sess_v6) return RSVP_ERR_MALFORMED_OBJ;
+            if (!info->hop_v4 && !info->hop_v6) return RSVP_ERR_MALFORMED_OBJ;
+            /* STYLE is mandatory in RESV */
+            break;
+        default:
+            break;
     }
 
     return RSVP_SUCCESS;

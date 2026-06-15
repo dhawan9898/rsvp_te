@@ -37,25 +37,20 @@ static void handle_path_message(struct rsvp_message_info* info) {
         psb = rsvp_psb_create(&info->key);
         if (!psb) return;
 
-        if (info->hop_v4) {
-            psb->prev_hop = *info->hop_v4;
-            psb->ifindex_in = ntohl(info->hop_v4->logical_interface);
-        }
-
-        if (info->lsp_name[0] != '\0') {
-            psb->lsp_name = strdup(info->lsp_name);
-        }
-
-        psb->cleanup_timer_id = rsvp_timer_start(
-            RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, psb_cleanup_timer_cb, psb);
         psb->refresh_timer_id = rsvp_timer_start(
             RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, psb_refresh_timer_cb, psb);
     } else {
         LOG_INFO("Refresh PATH: resetting cleanup timer");
-        rsvp_timer_stop(psb->cleanup_timer_id);
-        psb->cleanup_timer_id = rsvp_timer_start(
-            RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, psb_cleanup_timer_cb, psb);
     }
+
+    if (info->lsp_name[0] != '\0') {
+        if (psb->lsp_name) free(psb->lsp_name);
+        psb->lsp_name = strdup(info->lsp_name);
+    }
+
+    rsvp_timer_stop(psb->cleanup_timer_id);
+    psb->cleanup_timer_id = rsvp_timer_start(
+        RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, psb_cleanup_timer_cb, psb);
 
     if (info->hop_v4) {
         psb->prev_hop = *info->hop_v4;

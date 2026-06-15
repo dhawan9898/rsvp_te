@@ -183,15 +183,13 @@ uint16_t rsvp_checksum(const void* buf, size_t len) {
     const uint8_t* data = (const uint8_t*)buf;
     uint32_t sum = 0;
 
-    while (len > 1) {
+    for (size_t i = 0; i < len; i += 2) {
         uint16_t word;
-        memcpy(&word, data, sizeof(word));
-        sum += ntohs(word);
-        data += 2;
-        len -= 2;
-    }
-    if (len == 1) {
-        uint16_t word = data[0] << 8;
+        if (i + 1 < len) {
+            word = (data[i] << 8) + data[i + 1];
+        } else {
+            word = (data[i] << 8);
+        }
         sum += word;
     }
 
