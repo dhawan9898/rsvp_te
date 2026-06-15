@@ -50,6 +50,11 @@ int rsvp_builder_add_adspec(struct rsvp_builder* b, struct rsvp_adspec* adspec);
 /**
  * Finalize the message (update lengths and checksum).
  */
+size_t rsvp_builder_add_integrity(struct rsvp_builder* b, uint8_t flags, uint8_t* key_id, uint64_t sequence_number, uint8_t* digest, size_t digest_len);
+
+int rsvp_builder_add_ero(struct rsvp_builder* b, struct rsvp_ero_ipv4_subobj* ero_list, size_t count);
+int rsvp_builder_add_rro(struct rsvp_builder* b, struct rsvp_ero_ipv4_subobj* rro_list, size_t count);
+
 size_t rsvp_builder_finalize(struct rsvp_builder* b);
 
 uint16_t rsvp_checksum(const void* buf, size_t len);

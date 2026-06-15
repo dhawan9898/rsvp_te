@@ -128,8 +128,8 @@ static rsvp_error_t rsvp_validate_resv_message(struct rsvp_message_info* info, s
     struct rsvp_psb* psb = rsvp_psb_find(&info->key);
     if (!psb) {
         LOG_WARN("  - Validation: No matching PSB for RESV");
-        /* RFC 2205: If no path state, send ResvErr with Code 24 */
-        *err_code = RSVP_ERR_ROUTING_PROBLEM;
+        /* RFC 2205: If no path state, send ResvErr with Code 3 */
+        *err_code = RSVP_ERR_NO_PATH_STATE;
         *err_val = 0; 
         return RSVP_ERR_NOT_FOUND;
     }

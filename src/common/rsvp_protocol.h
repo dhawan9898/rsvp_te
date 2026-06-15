@@ -116,6 +116,15 @@ struct rsvp_hop_ipv6 {
     uint32_t logical_interface;
 } __attribute__((packed));
 
+/* INTEGRITY Object (RFC 2747) */
+struct rsvp_integrity {
+    uint8_t flags;
+    uint8_t reserved;
+    uint8_t key_id[6];
+    uint64_t sequence_number;
+    uint8_t digest[]; /* Variable length */
+} __attribute__((packed));
+
 /* Sender Template / Filter Spec - LSP_TUNNEL_IPv4 (RFC 3209) */
 struct rsvp_sender_ipv4 {
     struct in_addr source_addr;

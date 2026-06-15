@@ -1,6 +1,8 @@
 #include "rsvp_builder.h"
 #include "common/rsvp_log.h"
+#include "common/rsvp_error.h"
 #include <arpa/inet.h>
+#include <endian.h>
 #include <string.h>
 
 void rsvp_builder_init(struct rsvp_builder* b, uint8_t* buffer, size_t size,
@@ -66,11 +68,11 @@ int rsvp_builder_add_session_ipv6(struct rsvp_builder* b, struct in6_addr* dest,
 
 int rsvp_builder_add_session_attribute(struct rsvp_builder* b,
                                        const char* name) {
-    uint8_t buf[256] = {0};
+    uint8_t buf[300] = {0};
     struct rsvp_session_attribute* attr = (struct rsvp_session_attribute*)buf;
 
-    uint8_t name_len = name ? strlen(name) : 0;
-    if (name_len > 200) name_len = 200; /* Safety limit */
+    size_t name_len_full = name ? strlen(name) : 0;
+    uint8_t name_len = (name_len_full > 255) ? 255 : (uint8_t)name_len_full;
 
     attr->setup_prio = 0;   /* Wireshark shows SetupPrio 0 */
     attr->holding_prio = 0; /* Wireshark shows HoldPrio 0 */
@@ -182,6 +184,40 @@ int rsvp_builder_add_flowspec(struct rsvp_builder* b,
     wire_tspec.max_packet_size = htonl(tspec->max_packet_size);
     return rsvp_builder_add_obj(b, RSVP_CLASS_FLOWSPEC, 2, &wire_tspec,
                                 sizeof(wire_tspec));
+}
+
+int rsvp_builder_add_ero(struct rsvp_builder* b, struct rsvp_ero_ipv4_subobj* ero_list, size_t count) {
+    if (!b || !ero_list || count == 0) return RSVP_ERR_INVALID_PARAM;
+    size_t obj_len = count * sizeof(struct rsvp_ero_ipv4_subobj);
+    return rsvp_builder_add_obj(b, RSVP_CLASS_EXPLICIT_ROUTE, 1, ero_list, obj_len);
+}
+
+int rsvp_builder_add_rro(struct rsvp_builder* b, struct rsvp_ero_ipv4_subobj* rro_list, size_t count) {
+    if (!b || !rro_list || count == 0) return RSVP_ERR_INVALID_PARAM;
+    size_t obj_len = count * sizeof(struct rsvp_ero_ipv4_subobj);
+    /* C-Type 1 for IPv4 RRO (RFC 3209) */
+    return rsvp_builder_add_obj(b, RSVP_CLASS_RECORD_ROUTE, 1, rro_list, obj_len);
+}
+
+size_t rsvp_builder_add_integrity(struct rsvp_builder* b, uint8_t flags, uint8_t* key_id, uint64_t sequence_number, uint8_t* digest, size_t digest_len) {
+    if (!b || !key_id || (!digest && digest_len > 0)) return 0;
+    
+    struct rsvp_integrity* int_obj;
+    size_t obj_len = sizeof(struct rsvp_integrity) + digest_len;
+    
+    uint8_t buffer[256];
+    if (obj_len > sizeof(buffer)) return 0; /* Simplify for now */
+    
+    int_obj = (struct rsvp_integrity*)buffer;
+    int_obj->flags = flags;
+    int_obj->reserved = 0;
+    memcpy(int_obj->key_id, key_id, 6);
+    int_obj->sequence_number = htobe64(sequence_number);
+    if (digest_len > 0) {
+        memcpy(int_obj->digest, digest, digest_len);
+    }
+    
+    return rsvp_builder_add_obj(b, RSVP_CLASS_INTEGRITY, 1, int_obj, obj_len);
 }
 
 uint16_t rsvp_checksum(const void* buf, size_t len) {

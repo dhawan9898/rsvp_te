@@ -1,6 +1,7 @@
 #include "rsvp_parser.h"
 #include "common/rsvp_log.h"
 #include <arpa/inet.h>
+#include <endian.h>
 #include <netinet/ip.h>
 #include <stdio.h>
 #include <string.h>
@@ -96,6 +97,13 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
         const uint8_t* obj_data = obj_ptr + sizeof(struct rsvp_obj_hdr);
 
         switch (obj_hdr->class_num) {
+            case RSVP_CLASS_INTEGRITY:
+                if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_integrity)) {
+                    info->integrity = (struct rsvp_integrity*)obj_data;
+                    LOG_DEBUG("  - INTEGRITY: SeqNum %llu", (unsigned long long)be64toh(info->integrity->sequence_number));
+                }
+                break;
+
             case RSVP_CLASS_SESSION:
                 if ((obj_hdr->c_type == 1 || obj_hdr->c_type == 7) &&
                     obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_session_ipv4)) {
@@ -160,6 +168,18 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
                 }
                 break;
 
+            case RSVP_CLASS_EXPLICIT_ROUTE:
+                if (obj_len > sizeof(struct rsvp_obj_hdr)) {
+                    info->ero = (struct rsvp_ero_ipv4_subobj*)obj_data;
+                    info->ero_len = obj_len - sizeof(struct rsvp_obj_hdr);
+                    LOG_DEBUG("  - ERO: Length %zu", info->ero_len);
+                }
+                break;
+
+            case RSVP_CLASS_RECORD_ROUTE:
+                LOG_DEBUG("  - RRO: Length %zu", obj_len - sizeof(struct rsvp_obj_hdr));
+                break;
+
             case RSVP_CLASS_SESSION_ATTRIB:
                 if (obj_hdr->c_type == 7 &&
                     obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_session_attribute)) {
@@ -175,7 +195,14 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
                 break;
 
             default:
-                LOG_DEBUG("  - Unhandled object class %d", obj_hdr->class_num);
+                if (obj_hdr->class_num < 128) {
+                    LOG_WARN("Parser: Unhandled object class %d (Class-Num < 128). Rejecting message.", obj_hdr->class_num);
+                    return RSVP_ERR_UNKNOWN_OBJECT_CLASS;
+                } else if (obj_hdr->class_num < 192) {
+                    LOG_DEBUG("  - Unhandled object class %d (Ignore and forward)", obj_hdr->class_num);
+                } else {
+                    LOG_DEBUG("  - Unhandled object class %d (Ignore and drop)", obj_hdr->class_num);
+                }
                 break;
         }
 
