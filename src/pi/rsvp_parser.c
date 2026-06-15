@@ -132,6 +132,21 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
                 }
                 break;
 
+            case RSVP_CLASS_STYLE:
+                if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_style)) {
+                    info->style = (struct rsvp_style*)obj_data;
+                    LOG_DEBUG("  - STYLE: %u", ntohl(info->style->style) & 0xFF);
+                }
+                break;
+
+            case RSVP_CLASS_FLOWSPEC:
+                if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_sender_tspec)) {
+                    info->flowspec = (struct rsvp_sender_tspec*)obj_data;
+                    LOG_DEBUG("  - FLOWSPEC: Rate %.2f, Size %.2f", 
+                              info->flowspec->token_bucket_rate, info->flowspec->token_bucket_size);
+                }
+                break;
+
             case RSVP_CLASS_ERROR_SPEC:
                 if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_error_spec_ipv4)) {
                     info->error_spec = (struct rsvp_error_spec_ipv4*)obj_data;
@@ -151,6 +166,22 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
                     char src_str[INET_ADDRSTRLEN];
                     inet_ntop(AF_INET, &info->sender_v4->source_addr, src_str, sizeof(src_str));
                     LOG_DEBUG("  - SENDER/FILTER IPv4: Source %s, LSP-ID %d", src_str, ntohs(info->sender_v4->lsp_id));
+                }
+                break;
+
+            case RSVP_CLASS_SENDER_TSPEC:
+                if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_sender_tspec)) {
+                    info->tspec = (struct rsvp_sender_tspec*)obj_data;
+                    LOG_DEBUG("  - SENDER TSPEC: Rate %.2f, Size %.2f", 
+                              info->tspec->token_bucket_rate, info->tspec->token_bucket_size);
+                }
+                break;
+
+            case RSVP_CLASS_ADSPEC:
+                if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_adspec)) {
+                    info->adspec = (struct rsvp_adspec*)obj_data;
+                    LOG_DEBUG("  - ADSPEC: Version %d, Length %d words", 
+                              info->adspec->version, ntohs(info->adspec->length));
                 }
                 break;
 

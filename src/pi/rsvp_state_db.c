@@ -145,7 +145,7 @@ void rsvp_rsb_delete(struct rsvp_rsb* rsb) {
 }
 
 void rsvp_psb_dump(void) {
-    LOG_DEBUG("--- Path State Blocks (PSBs) ---");
+    printf("--- Path State Blocks (PSBs) ---\n");
     int count = 0;
     char dest_buf[INET_ADDRSTRLEN];
     char src_buf[INET_ADDRSTRLEN];
@@ -154,7 +154,7 @@ void rsvp_psb_dump(void) {
         while (psb) {
             inet_ntop(AF_INET, &psb->key.session.dest_addr, dest_buf, sizeof(dest_buf));
             inet_ntop(AF_INET, &psb->key.sender.source_addr, src_buf, sizeof(src_buf));
-            LOG_DEBUG("PSB: Tunnel ID %d, Dest: %s, Sender: %s, LSP Name: %s",
+            printf("PSB: Tunnel ID %d, Dest: %s, Sender: %s, LSP Name: %s\n",
                    ntohs(psb->key.session.tunnel_id),
                    dest_buf, src_buf,
                    psb->lsp_name ? psb->lsp_name : "N/A");
@@ -162,11 +162,11 @@ void rsvp_psb_dump(void) {
             count++;
         }
     }
-    LOG_DEBUG("Total PSBs: %d", count);
+    printf("Total PSBs: %d\n", count);
 }
 
 void rsvp_rsb_dump(void) {
-    LOG_DEBUG("--- Reservation State Blocks (RSBs) ---");
+    printf("--- Reservation State Blocks (RSBs) ---\n");
     int count = 0;
     char dest_buf[INET_ADDRSTRLEN];
     char src_buf[INET_ADDRSTRLEN];
@@ -175,7 +175,7 @@ void rsvp_rsb_dump(void) {
         while (rsb) {
             inet_ntop(AF_INET, &rsb->key.session.dest_addr, dest_buf, sizeof(dest_buf));
             inet_ntop(AF_INET, &rsb->key.sender.source_addr, src_buf, sizeof(src_buf));
-            LOG_DEBUG("RSB: Tunnel ID %d, Dest: %s, Sender: %s, Label In: %u, Label Out: %u",
+            printf("RSB: Tunnel ID %d, Dest: %s, Sender: %s, Label In: %u, Label Out: %u\n",
                    ntohs(rsb->key.session.tunnel_id),
                    dest_buf, src_buf,
                    rsb->label_in, rsb->label_out);
@@ -183,5 +183,5 @@ void rsvp_rsb_dump(void) {
             count++;
         }
     }
-    LOG_DEBUG("Total RSBs: %d", count);
+    printf("Total RSBs: %d\n", count);
 }

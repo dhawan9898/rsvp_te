@@ -116,10 +116,6 @@ void rsvp_dispatcher_run(void) {
                         recvfrom(rsvp_raw_sock, buffer, sizeof(buffer), 0,
                                  (struct sockaddr*)&src_addr, &addr_len);
                     if (bytes_read > 0) {
-                        char src_str[INET_ADDRSTRLEN];
-                        inet_ntop(AF_INET, &src_addr.sin_addr, src_str, sizeof(src_str));
-                        LOG_DEBUG("Dispatcher: Received %zd bytes from %s", bytes_read, src_str);
-
                         if (bytes_read >= (ssize_t)sizeof(struct iphdr)) {
                             struct iphdr* ip = (struct iphdr*)buffer;
                             struct in_addr packet_src;
@@ -130,6 +126,11 @@ void rsvp_dispatcher_run(void) {
                                 continue; 
                             }
                         }
+
+                        char src_str[INET_ADDRSTRLEN];
+                        inet_ntop(AF_INET, &src_addr.sin_addr, src_str, sizeof(src_str));
+                        LOG_DEBUG("Dispatcher: Received %zd bytes from %s", bytes_read, src_str);
+
                         memset(&info, 0, sizeof(info));
                         rsvp_error_t err = rsvp_parse_packet(buffer, bytes_read, &info);
                         if (err == RSVP_SUCCESS) {

@@ -29,7 +29,9 @@ struct rsvp_message_info {
     struct rsvp_error_spec_ipv4* error_spec;
     struct rsvp_integrity* integrity;
     struct rsvp_sender_tspec* tspec;
+    struct rsvp_sender_tspec* flowspec;
     struct rsvp_adspec* adspec;
+    struct rsvp_style* style;
     struct rsvp_ero_ipv4_subobj* ero;
     size_t ero_len;
     struct rsvp_label_ipv4* label;

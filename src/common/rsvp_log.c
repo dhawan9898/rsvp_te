@@ -65,6 +65,15 @@ void rsvp_log(rsvp_log_level_t level, const char* func, int line,
 
     fprintf(out, "\n");
     fflush(out);
+
+    /* Also print errors to stderr for immediate feedback */
+    if (level == LOG_LEVEL_ERROR && out != stderr) {
+        fprintf(stderr, "[%s] [%s] %s:%d: ", time_buf, level_str, func, line);
+        va_start(args, format);
+        vfprintf(stderr, format, args);
+        va_end(args);
+        fprintf(stderr, "\n");
+    }
 }
 
 #endif /* RSVP_LOGGING_ENABLED */
