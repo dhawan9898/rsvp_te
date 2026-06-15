@@ -13,9 +13,19 @@
 #include "rsvp_state_db.h"
 
 #define RSVP_REFRESH_MS 30000
-#define RSVP_CLEANUP_MS 90000
+#define RSVP_K_VALUE 3
+#define RSVP_CLEANUP_MS(R) ((uint32_t)((RSVP_K_VALUE + 0.5) * (R)))
 
 static uint16_t next_lsp_id = 1;
+
+static uint32_t get_jittered_refresh(uint32_t base_ms) {
+    if (base_ms == 0) base_ms = RSVP_REFRESH_MS;
+    /* Set to a value T such that 0.5R <= T <= 1.5R */
+    uint32_t min = base_ms / 2;
+    uint32_t range = base_ms;
+    if (range == 0) range = 1;
+    return min + (rand() % range);
+}
 
 /* Forward declarations */
 static void psb_refresh_timer_cb(void* arg);
@@ -25,6 +35,7 @@ static void rsb_cleanup_timer_cb(void* arg);
 static void send_resv_upstream(struct rsvp_rsb* rsb);
 static void propagate_path_tear(struct rsvp_psb* psb);
 static void propagate_resv_tear(struct rsvp_rsb* rsb);
+static void send_path_downstream(struct rsvp_psb* psb);
 
 static void handle_path_message(struct rsvp_message_info* info) {
     LOG_INFO("Handling PATH message...");
@@ -36,11 +47,11 @@ static void handle_path_message(struct rsvp_message_info* info) {
         LOG_INFO("New PATH: creating PSB");
         psb = rsvp_psb_create(&info->key);
         if (!psb) return;
+        psb->refresh_ms = RSVP_REFRESH_MS;
+    }
 
-        psb->refresh_timer_id = rsvp_timer_start(
-            RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, psb_refresh_timer_cb, psb);
-    } else {
-        LOG_INFO("Refresh PATH: resetting cleanup timer");
+    if (info->time_values) {
+        psb->refresh_ms = ntohl(info->time_values->refresh_ms);
     }
 
     if (info->lsp_name[0] != '\0') {
@@ -48,9 +59,15 @@ static void handle_path_message(struct rsvp_message_info* info) {
         psb->lsp_name = strdup(info->lsp_name);
     }
 
+    /* Reset Cleanup Timer */
     rsvp_timer_stop(psb->cleanup_timer_id);
     psb->cleanup_timer_id = rsvp_timer_start(
-        RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, psb_cleanup_timer_cb, psb);
+        RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(psb->refresh_ms), psb_cleanup_timer_cb, psb);
+
+    /* Refresh Timer: Restarted to jittered value */
+    rsvp_timer_stop(psb->refresh_timer_id);
+    psb->refresh_timer_id = rsvp_timer_start(
+        RSVP_TIMER_REFRESH, get_jittered_refresh(psb->refresh_ms), psb_refresh_timer_cb, psb);
 
     if (info->hop_v4) {
         psb->prev_hop = *info->hop_v4;
@@ -67,16 +84,19 @@ static void handle_path_message(struct rsvp_message_info* info) {
             if (rsb) {
                 rsb->associated_psb = psb;
                 psb->associated_rsb = rsb;
+                rsb->refresh_ms = psb->refresh_ms;
 
                 rsb->cleanup_timer_id = rsvp_timer_start(
-                    RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, rsb_cleanup_timer_cb,
+                    RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(rsb->refresh_ms), rsb_cleanup_timer_cb,
                     rsb);
                 rsb->refresh_timer_id = rsvp_timer_start(
-                    RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, rsb_refresh_timer_cb,
+                    RSVP_TIMER_REFRESH, get_jittered_refresh(rsb->refresh_ms), rsb_refresh_timer_cb,
                     rsb);
 
                 send_resv_upstream(rsb);
             }
+        } else {
+            rsb->refresh_ms = psb->refresh_ms;
         }
     } else {
         /* Transit node or Ingress receiving its own packet */
@@ -89,7 +109,6 @@ static void handle_path_message(struct rsvp_message_info* info) {
         }
 
         struct in_addr next_hop = {0};
-
         int out_ifindex = hal_netlink_get_egress_if(&dest, &next_hop);
 
         if (out_ifindex < 0) {
@@ -128,30 +147,35 @@ static void handle_path_message(struct rsvp_message_info* info) {
 static void handle_resv_message(struct rsvp_message_info* info) {
     LOG_INFO("Handling RESV message...");
     struct rsvp_rsb* rsb = rsvp_rsb_find(&info->key);
-    bool is_new = false;
+    bool is_new = (rsb == NULL);
 
-    if (!rsb) {
+    if (is_new) {
         LOG_INFO("New RESV: creating RSB");
         rsb = rsvp_rsb_create(&info->key);
         if (!rsb) return;
-        is_new = true;
+        rsb->refresh_ms = RSVP_REFRESH_MS;
 
         struct rsvp_psb* psb = rsvp_psb_find(&info->key);
         if (psb) {
             rsb->associated_psb = psb;
             psb->associated_rsb = rsb;
+            rsb->refresh_ms = psb->refresh_ms;
         }
-
-        rsb->cleanup_timer_id = rsvp_timer_start(
-            RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, rsb_cleanup_timer_cb, rsb);
-        rsb->refresh_timer_id = rsvp_timer_start(
-            RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, rsb_refresh_timer_cb, rsb);
-    } else {
-        LOG_INFO("Refresh RESV: resetting cleanup timer");
-        rsvp_timer_stop(rsb->cleanup_timer_id);
-        rsb->cleanup_timer_id = rsvp_timer_start(
-            RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, rsb_cleanup_timer_cb, rsb);
     }
+
+    if (info->time_values) {
+        rsb->refresh_ms = ntohl(info->time_values->refresh_ms);
+    }
+
+    /* Reset Cleanup Timer */
+    rsvp_timer_stop(rsb->cleanup_timer_id);
+    rsb->cleanup_timer_id = rsvp_timer_start(
+        RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(rsb->refresh_ms), rsb_cleanup_timer_cb, rsb);
+
+    /* Refresh Timer: Restarted to jittered value */
+    rsvp_timer_stop(rsb->refresh_timer_id);
+    rsb->refresh_timer_id = rsvp_timer_start(
+        RSVP_TIMER_REFRESH, get_jittered_refresh(rsb->refresh_ms), rsb_refresh_timer_cb, rsb);
 
     if (info->label) {
         rsb->label_out = ntohl(info->label->label) >> 12;
@@ -344,7 +368,7 @@ static void send_resv_upstream(struct rsvp_rsb* rsb) {
         &b, &local_addr,
         out_ifindex >= 0 ? (uint32_t)out_ifindex : psb->ifindex_in);
 
-    rsvp_builder_add_time_values(&b, RSVP_REFRESH_MS);
+    rsvp_builder_add_time_values(&b, rsb->refresh_ms);
 
     /* STYLE object */
     rsvp_builder_add_style(&b, RSVP_STYLE_FF);
@@ -428,7 +452,7 @@ static void propagate_resv_tear(struct rsvp_rsb* rsb) {
                                   &ext_dest);
     rsvp_builder_add_hop_ipv4(&b, &prev_neighbor,
                               ntohl(prev_hop.logical_interface));
-    rsvp_builder_add_time_values(&b, RSVP_REFRESH_MS);
+    rsvp_builder_add_time_values(&b, rsb->refresh_ms);
     size_t len = rsvp_builder_finalize(&b);
 
     struct in_addr local_addr = {0};
@@ -463,7 +487,7 @@ static void send_path_downstream(struct rsvp_psb* psb) {
         local_addr = psb->key.sender.source_addr;
     }
     rsvp_builder_add_hop_ipv4(&b, &local_addr, ifindex);
-    rsvp_builder_add_time_values(&b, RSVP_REFRESH_MS);
+    rsvp_builder_add_time_values(&b, psb->refresh_ms);
     rsvp_builder_add_label_request(&b, 0x0800);
     rsvp_builder_add_session_attribute(&b, psb->lsp_name);
 
@@ -507,10 +531,13 @@ void rsvp_initiate_path(struct in_addr* src, struct in_addr* dest,
     if (!psb) {
         psb = rsvp_psb_create(&key);
         if (!psb) return;
+        psb->refresh_ms = RSVP_REFRESH_MS;
         psb->cleanup_timer_id = rsvp_timer_start(
-            RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS, psb_cleanup_timer_cb, psb);
+            RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(psb->refresh_ms),
+            psb_cleanup_timer_cb, psb);
         psb->refresh_timer_id = rsvp_timer_start(
-            RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, psb_refresh_timer_cb, psb);
+            RSVP_TIMER_REFRESH, get_jittered_refresh(psb->refresh_ms),
+            psb_refresh_timer_cb, psb);
         psb->lsp_name = lsp_name ? strdup(lsp_name) : NULL;
     }
 
@@ -519,15 +546,16 @@ void rsvp_initiate_path(struct in_addr* src, struct in_addr* dest,
 
 static void psb_refresh_timer_cb(void* arg) {
     struct rsvp_psb* psb = (struct rsvp_psb*)arg;
-    psb->refresh_timer_id = rsvp_timer_start(
-        RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, psb_refresh_timer_cb, psb);
+    struct in_addr dest = psb->key.session.dest_addr;
 
-    if (psb->prev_hop.neighbor_addr.s_addr == 0) {
-        /* We are Ingress: Trigger periodic refresh */
-        LOG_INFO("Ingress: Refreshing PATH downstream...");
+    if (!hal_netlink_is_local_addr(&dest)) {
+        LOG_INFO("PSB Refresh Timer Expired: Refreshing PATH downstream...");
         send_path_downstream(psb);
     }
-    /* Transit nodes do not trigger refreshes; they just forward when they receive them. */
+
+    psb->refresh_timer_id = rsvp_timer_start(
+        RSVP_TIMER_REFRESH, get_jittered_refresh(psb->refresh_ms),
+        psb_refresh_timer_cb, psb);
 }
 
 static void psb_cleanup_timer_cb(void* arg) {
@@ -546,16 +574,16 @@ static void psb_cleanup_timer_cb(void* arg) {
 
 static void rsb_refresh_timer_cb(void* arg) {
     struct rsvp_rsb* rsb = (struct rsvp_rsb*)arg;
-    rsb->refresh_timer_id = rsvp_timer_start(
-        RSVP_TIMER_REFRESH, RSVP_REFRESH_MS, rsb_refresh_timer_cb, rsb);
 
     if (rsb->associated_psb &&
         rsb->associated_psb->prev_hop.neighbor_addr.s_addr != 0) {
-        /* Transit or Egress: Send periodic RESV upstream */
-        LOG_INFO("Refreshing RESV upstream...");
+        LOG_INFO("RSB Refresh Timer Expired: Refreshing RESV upstream...");
         send_resv_upstream(rsb);
     }
-    /* Ingress nodes do not refresh upstream. */
+
+    rsb->refresh_timer_id = rsvp_timer_start(
+        RSVP_TIMER_REFRESH, get_jittered_refresh(rsb->refresh_ms),
+        rsb_refresh_timer_cb, rsb);
 }
 
 static void rsb_cleanup_timer_cb(void* arg) {

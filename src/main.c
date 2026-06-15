@@ -4,6 +4,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <time.h>
+
 #include "common/rsvp_log.h"
 #include "pi/label_mgr.h"
 #include "pi/rsvp_dispatcher.h"
@@ -31,6 +33,7 @@ static uint16_t allocate_tunnel_id(void) {
 }
 
 int main(int argc, char* argv[]) {
+    srand(time(NULL));
     rsvp_set_log_level(LOG_LEVEL_DEBUG);
     LOG_INFO("Starting RSVP-TE Daemon...");
 

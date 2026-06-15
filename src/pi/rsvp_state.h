@@ -32,6 +32,7 @@ struct rsvp_psb {
     /* State Management */
     uint32_t cleanup_timer_id;
     uint32_t refresh_timer_id;
+    uint32_t refresh_ms;
 
     /* Chaining for Hash Table and Interface Lists */
     struct rsvp_psb* next_hash;
@@ -54,6 +55,7 @@ struct rsvp_rsb {
     /* State Management */
     uint32_t cleanup_timer_id;
     uint32_t refresh_timer_id;
+    uint32_t refresh_ms;
     uint32_t hal_handle; /* Handle to programmed HW state */
 
     /* Chaining */
