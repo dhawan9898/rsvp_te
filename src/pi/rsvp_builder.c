@@ -185,17 +185,16 @@ int rsvp_builder_add_flowspec(struct rsvp_builder* b,
 }
 
 uint16_t rsvp_checksum(const void* buf, size_t len) {
-    const uint8_t* data = (const uint8_t*)buf;
+    const uint16_t* ptr = (const uint16_t*)buf;
     uint32_t sum = 0;
 
-    for (size_t i = 0; i < len; i += 2) {
-        uint16_t word;
-        if (i + 1 < len) {
-            word = (data[i] << 8) + data[i + 1];
-        } else {
-            word = (data[i] << 8);
-        }
-        sum += word;
+    while (len > 1) {
+        sum += ntohs(*ptr++);
+        len -= 2;
+    }
+
+    if (len > 0) {
+        sum += (*(const uint8_t*)ptr) << 8;
     }
 
     while (sum >> 16) {

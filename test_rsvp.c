@@ -155,6 +155,7 @@ int main() {
             struct in_addr nbr_addr;
             inet_aton("10.0.0.5", &nbr_addr);
             rsvp_builder_add_hop_ipv4(&pb, &nbr_addr, 10);
+            rsvp_builder_add_label_request(&pb, 0x0800);
             size_t path_len = rsvp_builder_finalize(&pb);
             
             uint8_t path_pkt_with_ip[256];
@@ -174,10 +175,10 @@ int main() {
             captured_len = 0;
             printf("Processing 2nd PATH at Transit (Existing PSB)...\n");
             rsvp_handle_message(&path_info);
-            if (captured_len == 0) {
-                printf("SUCCESS: Did NOT send redundant PATH (Backup Timer mode)\n");
+            if (captured_len > 0) {
+                printf("SUCCESS: Sent redundant PATH (State Refreshed)\n");
             } else {
-                printf("FAILURE: Sent redundant PATH for existing PSB\n");
+                printf("FAILURE: Did not send PATH refresh for existing PSB\n");
             }
 
             /* Test RESV backup */
@@ -188,7 +189,10 @@ int main() {
             struct rsvp_builder rb;
             rsvp_builder_init(&rb, resv_buf, sizeof(resv_buf), RSVP_MSG_RESV);
             rsvp_builder_add_session_ipv4(&rb, &t_dest, 100, &t_dest);
+            rsvp_builder_add_hop_ipv4(&rb, &nbr_addr, 10);
+            rsvp_builder_add_style(&rb, RSVP_STYLE_FF);
             rsvp_builder_add_obj(&rb, RSVP_CLASS_FILTER_SPEC, 7, &t_sender, sizeof(t_sender));
+            rsvp_builder_add_label_ipv4(&rb, 2000);
             size_t resv_len = rsvp_builder_finalize(&rb);
 
             uint8_t resv_pkt_with_ip_2[256];
@@ -210,10 +214,10 @@ int main() {
             captured_len = 0;
             printf("Processing 2nd RESV at Transit (Existing RSB)...\n");
             rsvp_handle_message(&resv_info_2);
-            if (captured_len == 0) {
-                printf("SUCCESS: Did NOT send redundant RESV (Backup Timer mode)\n");
+            if (captured_len > 0) {
+                printf("SUCCESS: Sent redundant RESV (State Refreshed)\n");
             } else {
-                printf("FAILURE: Sent redundant RESV for existing RSB\n");
+                printf("FAILURE: Did not send RESV refresh for existing RSB\n");
             }
 
             /* --- Tear Message Handling Verification --- */

@@ -59,26 +59,18 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
         return RSVP_ERR_INVALID_PARAM;
     }
 
-    /* Verify checksum non-destructively */
+    /* Verify checksum */
     uint16_t received_checksum = rsvp_hdr->checksum;
     if (received_checksum != 0) {
-        uint8_t hdr_copy[sizeof(struct rsvp_common_hdr)];
-        memcpy(hdr_copy, rsvp_hdr, sizeof(struct rsvp_common_hdr));
-        struct rsvp_common_hdr* chdr = (struct rsvp_common_hdr*)hdr_copy;
-        chdr->checksum = 0;
-
-        uint16_t h_cs = rsvp_checksum(hdr_copy, sizeof(struct rsvp_common_hdr));
-        uint16_t p_cs = rsvp_checksum(info->payload, info->payload_len);
-        
-        uint32_t combined = (uint32_t)ntohs(~h_cs) + (uint32_t)ntohs(~p_cs);
-        while (combined >> 16) {
-            combined = (combined & 0xffff) + (combined >> 16);
-        }
-        uint16_t computed_checksum = htons((uint16_t)(~combined));
+        /* RSVP checksum is calculated over the entire RSVP message with checksum field = 0 */
+        struct rsvp_common_hdr* hdr_ptr = (struct rsvp_common_hdr*)rsvp_hdr;
+        hdr_ptr->checksum = 0;
+        uint16_t computed_checksum = rsvp_checksum(rsvp_hdr, rsvp_len);
+        hdr_ptr->checksum = received_checksum; /* Restore */
 
         if (received_checksum != computed_checksum) {
             LOG_WARN("Parser: Checksum FAILED! (Received: 0x%x, Computed: 0x%x)", 
-                     received_checksum, computed_checksum);
+                     ntohs(received_checksum), ntohs(computed_checksum));
             return RSVP_ERR_CHECKSUM;
         }
         LOG_DEBUG("Parser: Checksum OK");

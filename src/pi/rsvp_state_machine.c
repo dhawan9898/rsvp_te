@@ -73,7 +73,9 @@ static void send_path_err(struct rsvp_message_info* info, uint8_t error_code, ui
     /* ERROR_SPEC */
     struct rsvp_error_spec_ipv4 err_spec;
     memset(&err_spec, 0, sizeof(err_spec));
-    hal_netlink_get_local_addr(0, &err_spec.error_node); /* Simplification: use default local addr */
+    struct in_addr local_node;
+    hal_netlink_get_local_addr(0, &local_node);
+    err_spec.error_node = local_node;
     err_spec.flags = 0;
     err_spec.error_code = error_code;
     err_spec.error_value = htons(error_value);
@@ -85,6 +87,68 @@ static void send_path_err(struct rsvp_message_info* info, uint8_t error_code, ui
     size_t len = rsvp_builder_finalize(&b);
     struct in_addr local_addr = {0};
     rsvp_send_packet(&local_addr, &src, buf, len, false);
+}
+
+static rsvp_error_t rsvp_validate_path_message(struct rsvp_message_info* info, struct rsvp_psb* existing_psb, uint8_t* err_code, uint16_t* err_val) {
+    if (!info->hop_v4) {
+        LOG_WARN("  - Validation: PATH missing RSVP_HOP object");
+        *err_code = RSVP_ERR_UNKNOWN_OBJECT_CLASS;
+        *err_val = (RSVP_CLASS_HOP << 8);
+        return RSVP_ERR_MALFORMED_OBJ;
+    }
+
+    if (!info->sender_v4) {
+        LOG_WARN("  - Validation: PATH missing SENDER_TEMPLATE object");
+        *err_code = RSVP_ERR_UNKNOWN_OBJECT_CLASS;
+        *err_val = (RSVP_CLASS_SENDER_TEMPLATE << 8);
+        return RSVP_ERR_MALFORMED_OBJ;
+    }
+
+    /* For RSVP-TE, LABEL_REQUEST is mandatory for new paths */
+    if (!info->label_req && !existing_psb) {
+        LOG_WARN("  - Validation: New PATH missing LABEL_REQUEST object");
+        *err_code = RSVP_ERR_UNKNOWN_OBJECT_CLASS;
+        *err_val = (RSVP_CLASS_LABEL_REQUEST << 8);
+        return RSVP_ERR_MALFORMED_OBJ;
+    }
+
+    if (existing_psb) {
+        /* RFC 2205: Check for incompatible state changes if any.
+         * Our rsvp_psb_find uses SESSION and SENDER_TEMPLATE as key.
+         * If they changed, it's considered a new path.
+         */
+        LOG_DEBUG("  - Validation: Existing PSB found, checking for updates");
+    }
+
+    return RSVP_SUCCESS;
+}
+
+static rsvp_error_t rsvp_validate_resv_message(struct rsvp_message_info* info, struct rsvp_rsb* existing_rsb, uint8_t* err_code, uint16_t* err_val) {
+    (void)existing_rsb;
+    struct rsvp_psb* psb = rsvp_psb_find(&info->key);
+    if (!psb) {
+        LOG_WARN("  - Validation: No matching PSB for RESV");
+        /* RFC 2205: If no path state, send ResvErr with Code 24 */
+        *err_code = RSVP_ERR_ROUTING_PROBLEM;
+        *err_val = 0; 
+        return RSVP_ERR_NOT_FOUND;
+    }
+
+    if (!info->hop_v4) {
+        LOG_WARN("  - Validation: RESV missing RSVP_HOP object");
+        *err_code = RSVP_ERR_UNKNOWN_OBJECT_CLASS;
+        *err_val = (RSVP_CLASS_HOP << 8);
+        return RSVP_ERR_MALFORMED_OBJ;
+    }
+
+    if (!info->label) {
+        LOG_WARN("  - Validation: RESV missing LABEL object");
+        *err_code = RSVP_ERR_UNKNOWN_OBJECT_CLASS;
+        *err_val = (RSVP_CLASS_LABEL << 8);
+        return RSVP_ERR_MALFORMED_OBJ;
+    }
+
+    return RSVP_SUCCESS;
 }
 
 static void handle_path_message(struct rsvp_message_info* info) {
@@ -99,6 +163,15 @@ static void handle_path_message(struct rsvp_message_info* info) {
              ntohs(info->key.session.tunnel_id), dest_str, src_str, hop_str);
 
     struct rsvp_psb* psb = rsvp_psb_find(&info->key);
+    uint8_t err_code = 0;
+    uint16_t err_val = 0;
+
+    if (rsvp_validate_path_message(info, psb, &err_code, &err_val) != RSVP_SUCCESS) {
+        LOG_WARN("  - PATH validation failed. Sending PathErr.");
+        send_path_err(info, err_code, err_val);
+        return;
+    }
+
     struct in_addr dest;
     bool is_new = (psb == NULL);
 
@@ -109,10 +182,13 @@ static void handle_path_message(struct rsvp_message_info* info) {
         psb->refresh_ms = RSVP_REFRESH_MS;
     } else {
         LOG_DEBUG("  - Found existing PSB");
-        /* RFC 2205: Check if SESSION or SENDER_TEMPLATE changed. 
-         * Our rsvp_psb_find uses both as key, so if they changed, it would be 'is_new'.
-         * However, we should verify other immutable parts if any.
-         */
+        /* Check if PHOP changed (could happen during re-routing) */
+        if (info->hop_v4 && memcmp(&psb->prev_hop.neighbor_addr, &info->hop_v4->neighbor_addr, sizeof(struct in_addr)) != 0) {
+            char old_hop[INET_ADDRSTRLEN], new_hop[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &psb->prev_hop.neighbor_addr, old_hop, sizeof(old_hop));
+            inet_ntop(AF_INET, &info->hop_v4->neighbor_addr, new_hop, sizeof(new_hop));
+            LOG_INFO("  - PHOP changed from %s to %s. Updating state.", old_hop, new_hop);
+        }
     }
 
     if (!info->hop_v4) {
@@ -215,12 +291,8 @@ static void handle_path_message(struct rsvp_message_info* info) {
 
         psb->ifindex_out = out_ifindex;
 
-        if (is_new) {
-            LOG_INFO("  - New Transit state, forwarding PATH downstream...");
-            send_path_downstream(psb);
-        } else {
-            LOG_DEBUG("  - Transit state refreshed");
-        }
+        LOG_INFO("  - Role: TRANSIT, forwarding PATH downstream...");
+        send_path_downstream(psb);
     }
 }
 
@@ -240,7 +312,9 @@ static void send_resv_err(struct rsvp_message_info* info, uint8_t error_code, ui
 
     struct rsvp_error_spec_ipv4 err_spec;
     memset(&err_spec, 0, sizeof(err_spec));
-    hal_netlink_get_local_addr(0, &err_spec.error_node);
+    struct in_addr local_node;
+    hal_netlink_get_local_addr(0, &local_node);
+    err_spec.error_node = local_node;
     err_spec.error_code = error_code;
     err_spec.error_value = htons(error_value);
     rsvp_builder_add_obj(&b, RSVP_CLASS_ERROR_SPEC, 1, &err_spec, sizeof(err_spec));
@@ -260,19 +334,22 @@ static void handle_resv_message(struct rsvp_message_info* info) {
     if (info->hop_v4) {
         inet_ntop(AF_INET, &info->hop_v4->neighbor_addr, nh_str, sizeof(nh_str));
     }
-    uint32_t label = info->label ? (ntohl(info->label->label) >> 12) : 0;
+
+    struct rsvp_rsb* rsb = rsvp_rsb_find(&info->key);
+    uint8_t err_code = 0;
+    uint16_t err_val = 0;
+
+    if (rsvp_validate_resv_message(info, rsb, &err_code, &err_val) != RSVP_SUCCESS) {
+        LOG_WARN("  - RESV validation failed. Sending ResvErr.");
+        send_resv_err(info, err_code, err_val);
+        return;
+    }
+
+    uint32_t label = ntohl(info->label->label) >> 12;
 
     LOG_INFO("Handling RESV: [TunnelID: %d, Dest: %s, Source: %s, Label: %u, NextHop: %s]",
              ntohs(info->key.session.tunnel_id), dest_str, src_str, label, nh_str);
 
-    if (!info->label) {
-        LOG_WARN("  - RESV missing LABEL object. Sending ResvErr.");
-        /* Error Code 2: Routing problem, Value 5: No label for this interface (simplified) */
-        send_resv_err(info, 2, 5);
-        return;
-    }
-
-    struct rsvp_rsb* rsb = rsvp_rsb_find(&info->key);
     bool is_new = (rsb == NULL);
 
     if (is_new) {
@@ -287,12 +364,6 @@ static void handle_resv_message(struct rsvp_message_info* info) {
             rsb->associated_psb = psb;
             psb->associated_rsb = rsb;
             rsb->refresh_ms = psb->refresh_ms;
-        } else {
-            LOG_WARN("  - No associated PSB found for this RESV! Sending ResvErr.");
-            /* Error Code 24: No path state for this reservation */
-            send_resv_err(info, 24, 0);
-            rsvp_rsb_delete(rsb);
-            return;
         }
     } else {
         LOG_DEBUG("  - Found existing RSB");
@@ -332,6 +403,8 @@ static void handle_resv_message(struct rsvp_message_info* info) {
     }
 
     uint32_t old_label_out = rsb->label_out;
+    struct in_addr old_next_hop = rsb->next_hop.neighbor_addr;
+
     if (info->label) {
         rsb->label_out = label;
     }
@@ -340,10 +413,24 @@ static void handle_resv_message(struct rsvp_message_info* info) {
         rsb->next_hop = *info->hop_v4;
     }
 
-    if (is_new || (info->label && rsb->label_out != old_label_out)) {
+    bool label_changed = (rsb->label_out != old_label_out);
+    bool hop_changed = (memcmp(&rsb->next_hop.neighbor_addr, &old_next_hop, sizeof(struct in_addr)) != 0);
+
+    if (is_new || label_changed || hop_changed) {
         if (rsb->associated_psb) {
             struct rsvp_psb* psb = rsb->associated_psb;
             struct in_addr next_hop_addr = rsb->next_hop.neighbor_addr;
+            
+            if (label_changed) {
+                LOG_INFO("  - Label changed from %u to %u", old_label_out, rsb->label_out);
+            }
+            if (hop_changed) {
+                char old_nh[INET_ADDRSTRLEN], new_nh[INET_ADDRSTRLEN];
+                inet_ntop(AF_INET, &old_next_hop, old_nh, sizeof(old_nh));
+                inet_ntop(AF_INET, &next_hop_addr, new_nh, sizeof(new_nh));
+                LOG_INFO("  - NextHop changed from %s to %s", old_nh, new_nh);
+            }
+
             if (psb->prev_hop.neighbor_addr.s_addr != 0) {
                 /* Transit node */
                 if (rsb->label_in == 0) {
@@ -356,12 +443,11 @@ static void handle_resv_message(struct rsvp_message_info* info) {
                 hal_mpls_install(rsb->label_in, rsb->label_out,
                                  ntohl(rsb->next_hop.logical_interface),
                                  &next_hop_addr);
-                if (is_new || (rsb->label_out != old_label_out)) {
-                    char prev_hop_buf[INET_ADDRSTRLEN];
-                    inet_ntop(AF_INET, &psb->prev_hop.neighbor_addr, prev_hop_buf, sizeof(prev_hop_buf));
-                    LOG_INFO("  - Forwarding RESV upstream to %s", prev_hop_buf);
-                    send_resv_upstream(rsb);
-                }
+                
+                char prev_hop_buf[INET_ADDRSTRLEN];
+                inet_ntop(AF_INET, &psb->prev_hop.neighbor_addr, prev_hop_buf, sizeof(prev_hop_buf));
+                LOG_INFO("  - Forwarding RESV upstream to %s", prev_hop_buf);
+                send_resv_upstream(rsb);
             } else {
                 /* Ingress node */
                 LOG_INFO("  - INGRESS: Programming MPLS PUSH [-> %u] via if %u",
@@ -377,7 +463,13 @@ static void handle_resv_message(struct rsvp_message_info* info) {
             LOG_WARN("  - RSB has no associated PSB, cannot program hardware!");
         }
     } else {
-        LOG_DEBUG("  - RSB state refreshed (no label change)");
+        LOG_DEBUG("  - RSB state refreshed (no label change), forwarding upstream...");
+        if (rsb->associated_psb && rsb->associated_psb->prev_hop.neighbor_addr.s_addr != 0) {
+            char prev_hop_buf[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &rsb->associated_psb->prev_hop.neighbor_addr, prev_hop_buf, sizeof(prev_hop_buf));
+            LOG_INFO("  - Forwarding RESV refresh upstream to %s", prev_hop_buf);
+            send_resv_upstream(rsb);
+        }
     }
 }
 
