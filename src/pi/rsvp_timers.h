@@ -36,8 +36,9 @@ void rsvp_timer_stop(uint32_t timer_id);
 
 /**
  * Reset/Restart an existing timer.
+ * Returns true if successful, false if the timer ID was not found.
  */
-void rsvp_timer_reset(uint32_t timer_id, uint32_t timeout_ms);
+bool rsvp_timer_reset(uint32_t timer_id, uint32_t timeout_ms);
 
 /**
  * Get all active timer file descriptors for polling.

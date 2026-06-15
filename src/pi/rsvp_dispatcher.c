@@ -33,8 +33,9 @@ int rsvp_dispatcher_init(void) {
     if (setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) <
         0) {
         LOG_ERROR("Failed to set IP_HDRINCL: %s", strerror(errno));
-        /* Continue anyway, but rsvp_send_packet will fail or send wrong header
-         */
+        close(rsvp_raw_sock);
+        rsvp_raw_sock = -1;
+        return -1;
     }
 
     if (setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_ROUTER_ALERT, &one,

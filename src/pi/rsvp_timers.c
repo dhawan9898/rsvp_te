@@ -95,15 +95,16 @@ void rsvp_timer_stop(uint32_t timer_id) {
     }
 }
 
-void rsvp_timer_reset(uint32_t timer_id, uint32_t timeout_ms) {
-    if (timer_id == 0) return;
+bool rsvp_timer_reset(uint32_t timer_id, uint32_t timeout_ms) {
+    if (timer_id == 0) return false;
     for (int i = 0; i < MAX_TIMERS; i++) {
         if (timers[i].active && timers[i].id == timer_id) {
             timers[i].expire_time_ms = get_current_time_ms() + timeout_ms;
             update_central_timer();
-            return;
+            return true;
         }
     }
+    return false;
 }
 
 int rsvp_timer_get_fds(int* fds, int max_fds) {

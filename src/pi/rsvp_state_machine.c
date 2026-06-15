@@ -14,7 +14,7 @@
 
 #define RSVP_REFRESH_MS 30000
 #define RSVP_K_VALUE 3
-#define RSVP_CLEANUP_MS(R) ((uint32_t)((RSVP_K_VALUE + 0.5) * (R)))
+#define RSVP_CLEANUP_MS(R) ((uint32_t)(RSVP_K_VALUE * (R)))
 
 static uint16_t next_lsp_id = 1;
 
@@ -22,15 +22,20 @@ static uint32_t get_jittered_refresh(uint32_t base_ms, bool is_backup) {
     if (base_ms == 0) base_ms = RSVP_REFRESH_MS;
     
     if (is_backup) {
-        /* Backup timer (Transit): Wait at least R, up to 1.5R */
-        uint32_t min = base_ms;
-        uint32_t range = base_ms / 2;
+        /* Backup timer (Transit): Should be slightly longer than R 
+         * to avoid unnecessary refreshes when upstream is healthy.
+         * Wait between 1.1R and 1.3R.
+         */
+        uint32_t min = (uint32_t)(base_ms * 1.1);
+        uint32_t max = (uint32_t)(base_ms * 1.3);
+        uint32_t range = max - min;
         if (range == 0) range = 1;
         return min + (rand() % range);
     } else {
-        /* Trigger timer (Ingress/Egress): 0.5R to 1.5R */
-        uint32_t min = base_ms / 2;
-        uint32_t range = base_ms;
+        /* Trigger timer (Ingress/Egress): 0.8R to 1.2R */
+        uint32_t min = (uint32_t)(base_ms * 0.8);
+        uint32_t max = (uint32_t)(base_ms * 1.2);
+        uint32_t range = max - min;
         if (range == 0) range = 1;
         return min + (rand() % range);
     }
@@ -63,26 +68,31 @@ static void handle_path_message(struct rsvp_message_info* info) {
         psb->refresh_ms = ntohl(info->time_values->refresh_ms);
     }
 
+    if (info->common_hdr) {
+        psb->ttl = info->common_hdr->ttl;
+    }
+
+    /* Reset Refresh Counter */
+    psb->refresh_count = 0;
+
     if (info->lsp_name[0] != '\0') {
         if (psb->lsp_name) free(psb->lsp_name);
         psb->lsp_name = strdup(info->lsp_name);
     }
 
     /* Reset Cleanup Timer */
-    if (psb->cleanup_timer_id == 0) {
+    if (psb->cleanup_timer_id == 0 ||
+        !rsvp_timer_reset(psb->cleanup_timer_id, RSVP_CLEANUP_MS(psb->refresh_ms))) {
         psb->cleanup_timer_id = rsvp_timer_start(
             RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(psb->refresh_ms), psb_cleanup_timer_cb, psb);
-    } else {
-        rsvp_timer_reset(psb->cleanup_timer_id, RSVP_CLEANUP_MS(psb->refresh_ms));
     }
 
     /* Refresh Timer: Reset to jittered backup value for Transit nodes */
     uint32_t next_refresh = get_jittered_refresh(psb->refresh_ms, true);
-    if (psb->refresh_timer_id == 0) {
+    if (psb->refresh_timer_id == 0 ||
+        !rsvp_timer_reset(psb->refresh_timer_id, next_refresh)) {
         psb->refresh_timer_id = rsvp_timer_start(
             RSVP_TIMER_REFRESH, next_refresh, psb_refresh_timer_cb, psb);
-    } else {
-        rsvp_timer_reset(psb->refresh_timer_id, next_refresh);
     }
 
     if (info->hop_v4) {
@@ -167,21 +177,23 @@ static void handle_resv_message(struct rsvp_message_info* info) {
         rsb->refresh_ms = ntohl(info->time_values->refresh_ms);
     }
 
+    if (info->common_hdr) {
+        rsb->ttl = info->common_hdr->ttl;
+    }
+
     /* Reset Cleanup Timer */
-    if (rsb->cleanup_timer_id == 0) {
+    if (rsb->cleanup_timer_id == 0 ||
+        !rsvp_timer_reset(rsb->cleanup_timer_id, RSVP_CLEANUP_MS(rsb->refresh_ms))) {
         rsb->cleanup_timer_id = rsvp_timer_start(
             RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(rsb->refresh_ms), rsb_cleanup_timer_cb, rsb);
-    } else {
-        rsvp_timer_reset(rsb->cleanup_timer_id, RSVP_CLEANUP_MS(rsb->refresh_ms));
     }
 
     /* Refresh Timer: Reset to jittered backup value for Transit nodes */
     uint32_t next_refresh_rsb = get_jittered_refresh(rsb->refresh_ms, true);
-    if (rsb->refresh_timer_id == 0) {
+    if (rsb->refresh_timer_id == 0 ||
+        !rsvp_timer_reset(rsb->refresh_timer_id, next_refresh_rsb)) {
         rsb->refresh_timer_id = rsvp_timer_start(
             RSVP_TIMER_REFRESH, next_refresh_rsb, rsb_refresh_timer_cb, rsb);
-    } else {
-        rsvp_timer_reset(rsb->refresh_timer_id, next_refresh_rsb);
     }
 
     if (info->label) {
@@ -356,6 +368,7 @@ static void send_resv_upstream(struct rsvp_rsb* rsb) {
     }
 
     rsvp_builder_init(&b, buf, sizeof(buf), RSVP_MSG_RESV);
+    b.hdr->ttl = (rsb->ttl > 0) ? rsb->ttl - 1 : 255;
 
     struct in_addr dest = psb->key.session.dest_addr;
     struct in_addr ext_dest = psb->key.session.extended_tunnel_id;
@@ -486,6 +499,7 @@ static void send_path_downstream(struct rsvp_psb* psb) {
     psb->ifindex_out = ifindex;
 
     rsvp_builder_init(&b, buf, sizeof(buf), RSVP_MSG_PATH);
+    b.hdr->ttl = (psb->ttl > 0) ? psb->ttl - 1 : 255;
     rsvp_builder_add_session_ipv4(&b, &dest_addr,
                                   ntohs(psb->key.session.tunnel_id), &ext_dest);
 
@@ -554,14 +568,30 @@ void rsvp_initiate_path(struct in_addr* src, struct in_addr* dest,
 static void psb_refresh_timer_cb(void* arg) {
     struct rsvp_psb* psb = (struct rsvp_psb*)arg;
     struct in_addr dest = psb->key.session.dest_addr;
+    bool is_transit = (psb->prev_hop.neighbor_addr.s_addr != 0);
 
     if (!hal_netlink_is_local_addr(&dest)) {
+        if (is_transit) {
+            psb->refresh_count++;
+            if (psb->refresh_count > 2) {
+                LOG_INFO("PSB: Missed 2 refreshes, tearing down state");
+                propagate_path_tear(psb);
+                rsvp_timer_stop(psb->cleanup_timer_id);
+                if (psb->associated_rsb) {
+                    rsvp_timer_stop(psb->associated_rsb->refresh_timer_id);
+                    rsvp_timer_stop(psb->associated_rsb->cleanup_timer_id);
+                    rsvp_rsb_delete(psb->associated_rsb);
+                }
+                rsvp_psb_delete(psb);
+                return;
+            }
+        }
         LOG_INFO("PSB Refresh Timer Expired: Refreshing PATH downstream...");
         send_path_downstream(psb);
     }
 
     psb->refresh_timer_id = rsvp_timer_start(
-        RSVP_TIMER_REFRESH, get_jittered_refresh(psb->refresh_ms, psb->prev_hop.neighbor_addr.s_addr != 0),
+        RSVP_TIMER_REFRESH, get_jittered_refresh(psb->refresh_ms, is_transit),
         psb_refresh_timer_cb, psb);
 }
 
@@ -582,18 +612,36 @@ static void psb_cleanup_timer_cb(void* arg) {
 static void rsb_refresh_timer_cb(void* arg) {
     struct rsvp_rsb* rsb = (struct rsvp_rsb*)arg;
 
-    if (rsb->associated_psb &&
-        rsb->associated_psb->prev_hop.neighbor_addr.s_addr != 0) {
-        LOG_INFO("RSB Refresh Timer Expired: Refreshing RESV upstream...");
-        send_resv_upstream(rsb);
-    }
-
     /* Check if we are Transit for this RSB */
     bool is_rsb_backup = false;
     if (rsb->associated_psb && rsb->associated_psb->key.session.dest_addr.s_addr != 0) {
-        if (!hal_netlink_is_local_addr(&rsb->associated_psb->key.session.dest_addr)) {
+        struct in_addr dest_addr = rsb->associated_psb->key.session.dest_addr;
+        if (!hal_netlink_is_local_addr(&dest_addr)) {
             is_rsb_backup = true;
         }
+    }
+
+    if (rsb->associated_psb &&
+        rsb->associated_psb->prev_hop.neighbor_addr.s_addr != 0) {
+        
+        if (is_rsb_backup) {
+            rsb->refresh_count++;
+            if (rsb->refresh_count > 2) {
+                LOG_INFO("RSB: Missed 2 refreshes from downstream, tearing down state");
+                propagate_resv_tear(rsb);
+                rsvp_timer_stop(rsb->cleanup_timer_id);
+                if (rsb->associated_psb) rsb->associated_psb->associated_rsb = NULL;
+                if (rsb->label_in != 0) {
+                    hal_mpls_remove(rsb->label_in);
+                    label_mgr_free(rsb->label_in);
+                }
+                rsvp_rsb_delete(rsb);
+                return;
+            }
+        }
+
+        LOG_INFO("RSB Refresh Timer Expired: Refreshing RESV upstream...");
+        send_resv_upstream(rsb);
     }
 
     rsb->refresh_timer_id = rsvp_timer_start(
