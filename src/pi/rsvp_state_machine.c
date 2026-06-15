@@ -81,16 +81,17 @@ static void handle_path_message(struct rsvp_message_info* info) {
     }
 
     /* Reset Cleanup Timer */
-    if (!psb->cleanup_timer.active ||
-        !rsvp_timer_reset(&psb->cleanup_timer, RSVP_CLEANUP_MS(psb->refresh_ms))) {
-        rsvp_timer_start(&psb->cleanup_timer, 
-            RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(psb->refresh_ms), psb_cleanup_timer_cb, psb);
+    if (!psb->is_ingress) {
+        if (!psb->cleanup_timer.active ||
+            !rsvp_timer_reset(&psb->cleanup_timer, RSVP_CLEANUP_MS(psb->refresh_ms))) {
+            rsvp_timer_start(&psb->cleanup_timer, 
+                RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(psb->refresh_ms), psb_cleanup_timer_cb, psb);
+        }
     }
 
-    /* Refresh Timer: Reset to jittered backup value for Transit nodes */
-    uint32_t next_refresh = get_jittered_refresh(psb->refresh_ms, !psb->is_ingress);
-    if (!psb->refresh_timer.active ||
-        !rsvp_timer_reset(&psb->refresh_timer, next_refresh)) {
+    /* Refresh Timer: Ensure it is running */
+    if (!psb->refresh_timer.active) {
+        uint32_t next_refresh = get_jittered_refresh(psb->refresh_ms, !psb->is_ingress);
         rsvp_timer_start(&psb->refresh_timer, 
             RSVP_TIMER_REFRESH, next_refresh, psb_refresh_timer_cb, psb);
     }
@@ -112,9 +113,6 @@ static void handle_path_message(struct rsvp_message_info* info) {
                 psb->associated_rsb = rsb;
                 rsb->refresh_ms = psb->refresh_ms;
 
-                rsvp_timer_start(&rsb->cleanup_timer, 
-                    RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(rsb->refresh_ms), rsb_cleanup_timer_cb,
-                    rsb);
                 rsvp_timer_start(&rsb->refresh_timer, 
                     RSVP_TIMER_REFRESH, get_jittered_refresh(rsb->refresh_ms, false), rsb_refresh_timer_cb,
                     rsb);
@@ -149,7 +147,7 @@ static void handle_path_message(struct rsvp_message_info* info) {
             LOG_INFO("Transit: New PSB, sending PATH downstream...");
             send_path_downstream(psb);
         } else {
-            LOG_INFO("Transit: Existing PSB, refresh timer reset (backup mode)");
+            LOG_INFO("Transit: Existing PSB, state refreshed");
         }
     }
 }
@@ -190,9 +188,8 @@ static void handle_resv_message(struct rsvp_message_info* info) {
 
     /* Refresh Timer: Only for Transit and Egress nodes (upstream refresh) */
     if (rsb->associated_psb && !rsb->associated_psb->is_ingress) {
-        uint32_t next_refresh_rsb = get_jittered_refresh(rsb->refresh_ms, true);
-        if (!rsb->refresh_timer.active ||
-            !rsvp_timer_reset(&rsb->refresh_timer, next_refresh_rsb)) {
+        if (!rsb->refresh_timer.active) {
+            uint32_t next_refresh_rsb = get_jittered_refresh(rsb->refresh_ms, true);
             rsvp_timer_start(&rsb->refresh_timer, 
                 RSVP_TIMER_REFRESH, next_refresh_rsb, rsb_refresh_timer_cb, rsb);
         }
@@ -559,9 +556,6 @@ void rsvp_initiate_path(struct in_addr* src, struct in_addr* dest,
         if (!psb) return;
         psb->refresh_ms = RSVP_REFRESH_MS;
         psb->is_ingress = true;
-        rsvp_timer_start(&psb->cleanup_timer, 
-            RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(psb->refresh_ms),
-            psb_cleanup_timer_cb, psb);
         rsvp_timer_start(&psb->refresh_timer, 
             RSVP_TIMER_REFRESH, get_jittered_refresh(psb->refresh_ms, false),
             psb_refresh_timer_cb, psb);
