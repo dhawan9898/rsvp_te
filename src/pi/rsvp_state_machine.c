@@ -54,6 +54,39 @@ static void send_path_downstream(struct rsvp_psb* psb);
 static void rsvp_psb_cleanup(struct rsvp_psb* psb, bool propagate);
 static void rsvp_rsb_cleanup(struct rsvp_rsb* rsb, bool propagate);
 
+static void send_path_err(struct rsvp_message_info* info, uint8_t error_code, uint16_t error_value) {
+    uint8_t buf[1024];
+    struct rsvp_builder b;
+    struct in_addr dest = info->key.session.dest_addr;
+    struct in_addr src = info->src_ip;
+
+    char dest_str[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &dest, dest_str, sizeof(dest_str));
+    LOG_INFO("  - Sending PathErr to %s [Code: %d, Val: %d]", inet_ntoa(src), error_code, error_value);
+
+    rsvp_builder_init(&b, buf, sizeof(buf), RSVP_MSG_PATHERR);
+    b.hdr->ttl = 255;
+
+    struct in_addr ext_dest = info->key.session.extended_tunnel_id;
+    rsvp_builder_add_session_ipv4(&b, &dest, ntohs(info->key.session.tunnel_id), &ext_dest);
+
+    /* ERROR_SPEC */
+    struct rsvp_error_spec_ipv4 err_spec;
+    memset(&err_spec, 0, sizeof(err_spec));
+    hal_netlink_get_local_addr(0, &err_spec.error_node); /* Simplification: use default local addr */
+    err_spec.flags = 0;
+    err_spec.error_code = error_code;
+    err_spec.error_value = htons(error_value);
+    rsvp_builder_add_obj(&b, RSVP_CLASS_ERROR_SPEC, 1, &err_spec, sizeof(err_spec));
+
+    /* SENDER_TEMPLATE */
+    rsvp_builder_add_obj(&b, RSVP_CLASS_SENDER_TEMPLATE, 7, &info->key.sender, sizeof(info->key.sender));
+
+    size_t len = rsvp_builder_finalize(&b);
+    struct in_addr local_addr = {0};
+    rsvp_send_packet(&local_addr, &src, buf, len, false);
+}
+
 static void handle_path_message(struct rsvp_message_info* info) {
     char dest_str[INET_ADDRSTRLEN], src_str[INET_ADDRSTRLEN], hop_str[INET_ADDRSTRLEN] = "N/A";
     inet_ntop(AF_INET, &info->key.session.dest_addr, dest_str, sizeof(dest_str));
@@ -76,6 +109,16 @@ static void handle_path_message(struct rsvp_message_info* info) {
         psb->refresh_ms = RSVP_REFRESH_MS;
     } else {
         LOG_DEBUG("  - Found existing PSB");
+        /* RFC 2205: Check if SESSION or SENDER_TEMPLATE changed. 
+         * Our rsvp_psb_find uses both as key, so if they changed, it would be 'is_new'.
+         * However, we should verify other immutable parts if any.
+         */
+    }
+
+    if (!info->hop_v4) {
+        LOG_WARN("  - PATH missing RSVP_HOP object. Dropping.");
+        if (is_new) rsvp_psb_delete(psb);
+        return;
     }
 
     if (info->time_values) {
@@ -159,7 +202,10 @@ static void handle_path_message(struct rsvp_message_info* info) {
         int out_ifindex = hal_netlink_get_egress_if(&dest, &next_hop);
 
         if (out_ifindex < 0) {
-            LOG_ERROR("  - Role: TRANSIT. No route to dest %s. Dropping PATH.", dest_str);
+            LOG_ERROR("  - Role: TRANSIT. No route to dest %s. Sending PathErr.", dest_str);
+            /* Error Code 2: Routing problem, Error Value 0: No route to destination */
+            send_path_err(info, 2, 0);
+            if (is_new) rsvp_psb_delete(psb);
             return;
         }
 
@@ -178,6 +224,35 @@ static void handle_path_message(struct rsvp_message_info* info) {
     }
 }
 
+static void send_resv_err(struct rsvp_message_info* info, uint8_t error_code, uint16_t error_value) {
+    uint8_t buf[1024];
+    struct rsvp_builder b;
+    struct in_addr dest = info->key.session.dest_addr;
+    struct in_addr src = info->src_ip;
+
+    LOG_INFO("  - Sending ResvErr to %s [Code: %d, Val: %d]", inet_ntoa(src), error_code, error_value);
+
+    rsvp_builder_init(&b, buf, sizeof(buf), RSVP_MSG_RESVERR);
+    b.hdr->ttl = 255;
+
+    struct in_addr ext_dest = info->key.session.extended_tunnel_id;
+    rsvp_builder_add_session_ipv4(&b, &dest, ntohs(info->key.session.tunnel_id), &ext_dest);
+
+    struct rsvp_error_spec_ipv4 err_spec;
+    memset(&err_spec, 0, sizeof(err_spec));
+    hal_netlink_get_local_addr(0, &err_spec.error_node);
+    err_spec.error_code = error_code;
+    err_spec.error_value = htons(error_value);
+    rsvp_builder_add_obj(&b, RSVP_CLASS_ERROR_SPEC, 1, &err_spec, sizeof(err_spec));
+
+    rsvp_builder_add_style(&b, RSVP_STYLE_FF);
+    rsvp_builder_add_obj(&b, RSVP_CLASS_FILTER_SPEC, 7, &info->key.sender, sizeof(info->key.sender));
+
+    size_t len = rsvp_builder_finalize(&b);
+    struct in_addr local_addr = {0};
+    rsvp_send_packet(&local_addr, &src, buf, len, false);
+}
+
 static void handle_resv_message(struct rsvp_message_info* info) {
     char dest_str[INET_ADDRSTRLEN], src_str[INET_ADDRSTRLEN], nh_str[INET_ADDRSTRLEN] = "N/A";
     inet_ntop(AF_INET, &info->key.session.dest_addr, dest_str, sizeof(dest_str));
@@ -189,6 +264,13 @@ static void handle_resv_message(struct rsvp_message_info* info) {
 
     LOG_INFO("Handling RESV: [TunnelID: %d, Dest: %s, Source: %s, Label: %u, NextHop: %s]",
              ntohs(info->key.session.tunnel_id), dest_str, src_str, label, nh_str);
+
+    if (!info->label) {
+        LOG_WARN("  - RESV missing LABEL object. Sending ResvErr.");
+        /* Error Code 2: Routing problem, Value 5: No label for this interface (simplified) */
+        send_resv_err(info, 2, 5);
+        return;
+    }
 
     struct rsvp_rsb* rsb = rsvp_rsb_find(&info->key);
     bool is_new = (rsb == NULL);
@@ -206,7 +288,11 @@ static void handle_resv_message(struct rsvp_message_info* info) {
             psb->associated_rsb = rsb;
             rsb->refresh_ms = psb->refresh_ms;
         } else {
-            LOG_WARN("  - No associated PSB found for this RESV!");
+            LOG_WARN("  - No associated PSB found for this RESV! Sending ResvErr.");
+            /* Error Code 24: No path state for this reservation */
+            send_resv_err(info, 24, 0);
+            rsvp_rsb_delete(rsb);
+            return;
         }
     } else {
         LOG_DEBUG("  - Found existing RSB");

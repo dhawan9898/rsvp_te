@@ -2,7 +2,8 @@ CC = gcc
 CFLAGS = -Wall -Wextra -I./src -I./src/common -I./src/pi -I./wheel_timer
 LDFLAGS = -lpthread
 
-ifeq ($(LOGGING), 1)
+# Enable logging by default. Use DISABLE_LOGS=1 to disable.
+ifneq ($(DISABLE_LOGS), 1)
 	CFLAGS += -DRSVP_LOGGING_ENABLED
 endif
 

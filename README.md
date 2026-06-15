@@ -10,6 +10,26 @@ An industrial-grade, robust, and modular RSVP-TE (Resource Reservation Protocol 
 - **Platform Abstraction (PI/PD)**: Clean separation between Platform Independent (protocol logic) and Platform Dependent (Linux Netlink, Raw Sockets) code.
 - **MPLS Integration**: Interfaces with the Linux kernel via Netlink to program MPLS label swapping and routing.
 - **Interactive CLI**: Real-time inspection of PSB (Path State Blocks) and RSB (Reservation State Blocks).
+- **Robust State Management**: Automatic cleanup of stale states via jittered refresh and cleanup timers.
+- **Error Propagation**: Supports PathErr and ResvErr message generation and propagation across the network.
+
+## Drawbacks
+
+- **IPv4 Only**: Current implementation does not support IPv6.
+- **Limited Traffic Engineering**: Missing support for complex constraints like bandwidth reservation (DiffServ-TE) or explicit route objects (ERO).
+- **Single Threaded Control Plane**: While efficient, it doesn't leverage multi-core for high-throughput signaling.
+- **Linux Specific HAL**: Hardware abstraction is currently coupled with Linux-specific Netlink and Raw Sockets.
+- **Basic Security**: Lacks RSVP authentication (RFC 2747).
+- **Scale Limits**: While wheel timers are $O(1)$, the current hash-based state DB might need further optimization for millions of LSPs.
+
+## Next Plan of Actions
+
+1. **Enhance State Validation**: Implement stricter validation when receiving messages that match existing PSBs/RSBs (e.g., verifying consistency of SESSION and SENDER_TEMPLATE objects).
+2. **Industrial-Grade Error Handling**: Refine error propagation to include more specific RSVP error codes and ensure bug-free handling of malformed or unexpected messages.
+3. **Explicit Route Object (ERO) Support**: Add support for ERO to enable true Traffic Engineering where paths are not just based on the IGP shortest path.
+4. **Graceful Restart**: Implement RSVP Graceful Restart (RFC 3473) to maintain data plane forwarding during control plane restarts.
+5. **Bandwidth Accounting**: Integrate with interface bandwidth management for admission control.
+6. **Authentication**: Add MD5 authentication for RSVP messages to secure the control plane.
 
 ## Project Structure
 
@@ -26,8 +46,14 @@ An industrial-grade, robust, and modular RSVP-TE (Resource Reservation Protocol 
 ## Usage
 
 ### Building
+To build the daemon and tests with logging enabled (default):
 ```bash
 make clean && make
+```
+
+To build without logging:
+```bash
+make clean && make DISABLE_LOGS=1
 ```
 
 ### Running the Daemon
