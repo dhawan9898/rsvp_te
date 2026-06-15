@@ -37,6 +37,19 @@ struct rsvp_psb* rsvp_psb_find(struct rsvp_path_key* key) {
     return NULL;
 }
 
+struct rsvp_psb* rsvp_psb_find_by_id(uint16_t tunnel_id) {
+    for (int i = 0; i < HASH_SIZE; i++) {
+        struct rsvp_psb* psb = psb_table[i];
+        while (psb) {
+            if (ntohs(psb->key.session.tunnel_id) == tunnel_id) {
+                return psb;
+            }
+            psb = psb->next_hash;
+        }
+    }
+    return NULL;
+}
+
 struct rsvp_psb* rsvp_psb_create(struct rsvp_path_key* key) {
     char dest_buf[INET_ADDRSTRLEN];
     char src_buf[INET_ADDRSTRLEN];

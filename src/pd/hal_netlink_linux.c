@@ -25,7 +25,16 @@ struct interface {
     bool active;
 };
 
+struct mpls_route {
+    uint32_t in_label;
+    uint32_t out_label;
+    int ifindex;
+    struct in_addr next_hop;
+    bool active;
+};
+
 static struct interface ifaces[MAX_INTERFACES];
+static struct mpls_route mpls_routes[MAX_INTERFACES];
 static int nl_sock = -1;
 
 static int find_iface_slot(int ifindex) {
@@ -248,6 +257,18 @@ int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex,
     LOG_INFO("[HAL-Linux] Installing MPLS: in=%u, out=%u, if=%d, next_hop=%s",
              in_label, out_label, out_ifindex, next_hop ? inet_ntoa(*next_hop) : "NULL");
 
+    /* Cache the route for CLI 'show mpls routes' */
+    for (int i = 0; i < MAX_INTERFACES; i++) {
+        if (!mpls_routes[i].active || mpls_routes[i].in_label == in_label) {
+            mpls_routes[i].in_label = in_label;
+            mpls_routes[i].out_label = out_label;
+            mpls_routes[i].ifindex = out_ifindex;
+            if (next_hop) mpls_routes[i].next_hop = *next_hop;
+            mpls_routes[i].active = true;
+            break;
+        }
+    }
+
     if (in_label == 0) {
         LOG_WARN("[HAL-Linux] Skipping MPLS install for in_label 0 (ingress IP encap not implemented)");
         return 0;
@@ -319,6 +340,13 @@ int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex,
 int hal_mpls_remove(uint32_t in_label) {
     LOG_INFO("[HAL-Linux] Removing MPLS: in=%u", in_label);
     
+    /* Update cache */
+    for (int i = 0; i < MAX_INTERFACES; i++) {
+        if (mpls_routes[i].active && mpls_routes[i].in_label == in_label) {
+            mpls_routes[i].active = false;
+        }
+    }
+
     if (in_label == 0) {
         LOG_WARN("[HAL-Linux] Skipping MPLS remove for in_label 0");
         return 0;
@@ -355,4 +383,18 @@ int hal_mpls_remove(uint32_t in_label) {
     }
     close(sock);
     return 0;
+}
+
+void hal_mpls_dump(void) {
+    printf("--- MPLS Forwarding Table ---\n");
+    int count = 0;
+    for (int i = 0; i < MAX_INTERFACES; i++) {
+        if (mpls_routes[i].active) {
+            printf("In-Label: %u, Out-Label: %u, Interface: %d, Next-Hop: %s\n",
+                   mpls_routes[i].in_label, mpls_routes[i].out_label,
+                   mpls_routes[i].ifindex, inet_ntoa(mpls_routes[i].next_hop));
+            count++;
+        }
+    }
+    printf("Total MPLS Routes: %d\n", count);
 }

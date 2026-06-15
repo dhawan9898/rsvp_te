@@ -997,6 +997,17 @@ void rsvp_initiate_path(struct in_addr* src, struct in_addr* dest,
     send_path_downstream(psb);
 }
 
+void rsvp_teardown_path(uint16_t tunnel_id) {
+    struct rsvp_psb* psb = rsvp_psb_find_by_id(tunnel_id);
+    if (!psb) {
+        printf("Tunnel ID %u not found.\n", tunnel_id);
+        return;
+    }
+
+    printf("Tearing down tunnel %u...\n", tunnel_id);
+    rsvp_psb_cleanup(psb, true);
+}
+
 static void psb_refresh_timer_cb(void* arg) {
     struct rsvp_psb* psb = (struct rsvp_psb*)arg;
     struct in_addr dest = psb->key.session.dest_addr;
