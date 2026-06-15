@@ -7,6 +7,7 @@
 #include <arpa/inet.h>
 
 #include "common/rsvp_log.h"
+#include "hal/hal_netlink.h"
 #include "rsvp_state_db.h"
 #include "rsvp_state_machine.h"
 
@@ -29,6 +30,15 @@ void rsvp_cli_handle_input(int fd) {
         rsvp_psb_dump();
     } else if (strcmp(buf, "show rsb") == 0) {
         rsvp_rsb_dump();
+    } else if (strcmp(buf, "show mpls routes") == 0) {
+        hal_mpls_dump();
+    } else if (strncmp(buf, "delete tunnel ", 14) == 0) {
+        uint32_t tunnel_id = 0;
+        if (sscanf(buf + 14, "%u", &tunnel_id) == 1) {
+            rsvp_teardown_path((uint16_t)tunnel_id);
+        } else {
+            printf("Usage: delete tunnel <tunnel_id>\n");
+        }
     } else if (strncmp(buf, "setup tunnel ", 13) == 0) {
         // format: setup tunnel <src_ip> <dest_ip> <tunnel_id> <name>
         char src_str[32], dest_str[32], name[32];
@@ -49,7 +59,9 @@ void rsvp_cli_handle_input(int fd) {
         printf("Available commands:\n");
         printf("  show psb\n");
         printf("  show rsb\n");
+        printf("  show mpls routes\n");
         printf("  setup tunnel <src_ip> <dest_ip> <tunnel_id> <name>\n");
+        printf("  delete tunnel <tunnel_id>\n");
     }
 
     rsvp_cli_print_prompt();

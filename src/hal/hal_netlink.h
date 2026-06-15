@@ -46,4 +46,9 @@ int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex,
  */
 int hal_mpls_remove(uint32_t in_label);
 
+/**
+ * Dump current MPLS routes to stdout.
+ */
+void hal_mpls_dump(void);
+
 #endif /* HAL_NETLINK_H */

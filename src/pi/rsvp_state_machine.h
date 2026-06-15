@@ -14,4 +14,9 @@ void rsvp_handle_message(struct rsvp_message_info* info);
 void rsvp_initiate_path(struct in_addr* src, struct in_addr* dest,
                         uint16_t tunnel_id, const char* lsp_name);
 
+/**
+ * Teardown an existing LSP by Tunnel ID.
+ */
+void rsvp_teardown_path(uint16_t tunnel_id);
+
 #endif /* RSVP_STATE_MACHINE_H */

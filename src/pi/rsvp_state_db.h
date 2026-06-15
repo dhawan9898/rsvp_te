@@ -13,6 +13,7 @@ void rsvp_state_db_init(void);
  */
 struct rsvp_psb* rsvp_psb_find(struct rsvp_path_key* key);
 struct rsvp_psb* rsvp_psb_create(struct rsvp_path_key* key);
+struct rsvp_psb* rsvp_psb_find_by_id(uint16_t tunnel_id);
 void rsvp_psb_delete(struct rsvp_psb* psb);
 
 /**
