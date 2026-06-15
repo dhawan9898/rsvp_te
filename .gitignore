@@ -3,3 +3,5 @@ rsvp_daemon
 test_rsvp
 test_wheel_timer
 tags
+cscope.out
+test_rsvp.log
