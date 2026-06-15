@@ -2,6 +2,10 @@ CC = gcc
 CFLAGS = -Wall -Wextra -I./src -I./src/common -I./src/pi -I./wheel_timer
 LDFLAGS = -lpthread
 
+ifeq ($(LOGGING), 1)
+	CFLAGS += -DRSVP_LOGGING_ENABLED
+endif
+
 COMMON_HDRS = src/common/rsvp_protocol.h src/common/rsvp_log.h src/common/rsvp_error.h wheel_timer/wheel_timer.h wheel_timer/list.h
 PI_HDRS = src/pi/rsvp_builder.h src/pi/rsvp_dispatcher.h src/pi/rsvp_parser.h src/pi/rsvp_state.h src/pi/rsvp_state_db.h src/pi/rsvp_state_machine.h src/pi/label_mgr.h src/pi/rsvp_timers.h src/pi/rsvp_cli.h
 

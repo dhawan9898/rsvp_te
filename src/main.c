@@ -34,6 +34,19 @@ static uint16_t allocate_tunnel_id(void) {
 
 int main(int argc, char* argv[]) {
     srand(time(NULL));
+    
+#ifdef RSVP_LOGGING_ENABLED
+    char* log_file = NULL;
+    /* Basic arg parsing for log file */
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--log") == 0 && i + 1 < argc) {
+            log_file = argv[i+1];
+            break;
+        }
+    }
+
+    rsvp_log_init(log_file);
+#endif
     rsvp_set_log_level(LOG_LEVEL_DEBUG);
     LOG_INFO("Starting RSVP-TE Daemon...");
 

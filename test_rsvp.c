@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "common/rsvp_log.h"
 #include "pi/label_mgr.h"
 #include "pi/rsvp_builder.h"
 #include "pi/rsvp_parser.h"
@@ -69,7 +70,9 @@ int rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t* buffer,
 }
 
 int main() {
-    printf("--- Running RSVP-TE Logic Verification ---\n");
+    rsvp_log_init("test_rsvp.log");
+    rsvp_set_log_level(LOG_LEVEL_DEBUG);
+    printf("--- Running RSVP-TE Logic Verification (Logs in test_rsvp.log) ---\n");
     rsvp_state_db_init();
     label_mgr_init(1000, 2000);
 

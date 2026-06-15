@@ -1,10 +1,11 @@
 #include "rsvp_builder.h"
-
+#include "common/rsvp_log.h"
 #include <arpa/inet.h>
 #include <string.h>
 
 void rsvp_builder_init(struct rsvp_builder* b, uint8_t* buffer, size_t size,
                        uint8_t msg_type) {
+    LOG_DEBUG("Builder: Initializing for Message Type %d (Buffer Size: %zu)", msg_type, size);
     b->buffer = buffer;
     b->size = size;
     b->offset = sizeof(struct rsvp_common_hdr);
@@ -21,7 +22,11 @@ int rsvp_builder_add_obj(struct rsvp_builder* b, uint8_t class_num,
     size_t obj_total_len = sizeof(struct rsvp_obj_hdr) + data_len;
     size_t aligned_len = RSVP_ALIGN(obj_total_len);
 
+    LOG_DEBUG("Builder: Adding Object [Class: %d, C-Type: %d, DataLen: %zu, Aligned: %zu]",
+              class_num, c_type, data_len, aligned_len);
+
     if (b->offset + aligned_len > b->size) {
+        LOG_ERROR("Builder: Buffer overflow when adding object class %d", class_num);
         return -1;
     }
 
@@ -205,6 +210,9 @@ size_t rsvp_builder_finalize(struct rsvp_builder* b) {
 
     /* Checksum is calculated over the entire RSVP message */
     b->hdr->checksum = rsvp_checksum((uint16_t*)b->buffer, b->offset);
+
+    LOG_DEBUG("Builder: Finalized message [Type: %d, Length: %d, Checksum: 0x%04x]",
+              b->hdr->msg_type, b->offset, ntohs(b->hdr->checksum));
 
     return b->offset;
 }

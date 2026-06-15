@@ -116,6 +116,10 @@ void rsvp_dispatcher_run(void) {
                         recvfrom(rsvp_raw_sock, buffer, sizeof(buffer), 0,
                                  (struct sockaddr*)&src_addr, &addr_len);
                     if (bytes_read > 0) {
+                        char src_str[INET_ADDRSTRLEN];
+                        inet_ntop(AF_INET, &src_addr.sin_addr, src_str, sizeof(src_str));
+                        LOG_DEBUG("Dispatcher: Received %zd bytes from %s", bytes_read, src_str);
+
                         if (bytes_read >= (ssize_t)sizeof(struct iphdr)) {
                             struct iphdr* ip = (struct iphdr*)buffer;
                             struct in_addr packet_src;
@@ -129,6 +133,8 @@ void rsvp_dispatcher_run(void) {
                         memset(&info, 0, sizeof(info));
                         if (rsvp_parse_packet(buffer, bytes_read, &info) == RSVP_SUCCESS) {
                             rsvp_handle_message(&info);
+                        } else {
+                            LOG_WARN("Dispatcher: Failed to parse RSVP packet from %s", src_str);
                         }
                     } else if (bytes_read < 0 && errno != EINTR) {
                         LOG_ERROR("recvfrom: %s", strerror(errno));
@@ -205,7 +211,7 @@ int rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t* buffer,
     inet_ntop(AF_INET, dest, dest_str, sizeof(dest_str));
     inet_ntop(AF_INET, src, src_str, sizeof(src_str));
 
-    LOG_INFO("Sent %zd bytes to %s from %s (RAO: %s)", bytes_sent,
-             dest_str, src_str, use_rao ? "on" : "off");
+    LOG_INFO("Sent %zd bytes to %s from %s (Type: %d, TTL: %d, RAO: %s)", 
+             bytes_sent, dest_str, src_str, rsvp_hdr->msg_type, iph->ttl, use_rao ? "on" : "off");
     return 0;
 }
