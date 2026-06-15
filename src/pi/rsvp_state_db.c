@@ -109,13 +109,16 @@ void rsvp_rsb_delete(struct rsvp_rsb* rsb) {
 void rsvp_psb_dump(void) {
     printf("--- Path State Blocks (PSBs) ---\n");
     int count = 0;
+    char dest_buf[INET_ADDRSTRLEN];
+    char src_buf[INET_ADDRSTRLEN];
     for (int i = 0; i < HASH_SIZE; i++) {
         struct rsvp_psb* psb = psb_table[i];
         while (psb) {
+            inet_ntop(AF_INET, &psb->key.session.dest_addr, dest_buf, sizeof(dest_buf));
+            inet_ntop(AF_INET, &psb->key.sender.source_addr, src_buf, sizeof(src_buf));
             printf("PSB: Tunnel ID %d, Dest: %s, Sender: %s, LSP Name: %s\n",
                    ntohs(psb->key.session.tunnel_id),
-                   inet_ntoa(psb->key.session.dest_addr),
-                   inet_ntoa(psb->key.sender.source_addr),
+                   dest_buf, src_buf,
                    psb->lsp_name ? psb->lsp_name : "N/A");
             psb = psb->next_hash;
             count++;
@@ -127,13 +130,16 @@ void rsvp_psb_dump(void) {
 void rsvp_rsb_dump(void) {
     printf("--- Reservation State Blocks (RSBs) ---\n");
     int count = 0;
+    char dest_buf[INET_ADDRSTRLEN];
+    char src_buf[INET_ADDRSTRLEN];
     for (int i = 0; i < HASH_SIZE; i++) {
         struct rsvp_rsb* rsb = rsb_table[i];
         while (rsb) {
+            inet_ntop(AF_INET, &rsb->key.session.dest_addr, dest_buf, sizeof(dest_buf));
+            inet_ntop(AF_INET, &rsb->key.sender.source_addr, src_buf, sizeof(src_buf));
             printf("RSB: Tunnel ID %d, Dest: %s, Sender: %s, Label In: %u, Label Out: %u\n",
                    ntohs(rsb->key.session.tunnel_id),
-                   inet_ntoa(rsb->key.session.dest_addr),
-                   inet_ntoa(rsb->key.sender.source_addr),
+                   dest_buf, src_buf,
                    rsb->label_in, rsb->label_out);
             rsb = rsb->next_hash;
             count++;

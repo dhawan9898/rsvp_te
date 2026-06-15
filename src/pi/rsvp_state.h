@@ -36,6 +36,7 @@ struct rsvp_psb {
     uint32_t refresh_ms;
     uint8_t ttl;
     uint8_t refresh_count;
+    bool is_ingress;
 
     /* Chaining for Hash Table and Interface Lists */
     struct rsvp_psb* next_hash;

@@ -190,7 +190,12 @@ int rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t* buffer,
         return -1;
     }
 
+    char dest_str[INET_ADDRSTRLEN];
+    char src_str[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, dest, dest_str, sizeof(dest_str));
+    inet_ntop(AF_INET, src, src_str, sizeof(src_str));
+
     LOG_INFO("Sent %zd bytes to %s from %s (RAO: %s)", bytes_sent,
-             inet_ntoa(*dest), inet_ntoa(*src), use_rao ? "on" : "off");
+             dest_str, src_str, use_rao ? "on" : "off");
     return 0;
 }
