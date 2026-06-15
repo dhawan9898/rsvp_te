@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "pi/label_mgr.h"
+#include "pi/rsvp_builder.h"
 #include "pi/rsvp_parser.h"
 #include "pi/rsvp_state_db.h"
 #include "pi/rsvp_state_machine.h"
@@ -24,11 +25,11 @@ int hal_netlink_get_local_addr(int ifindex, struct in_addr* addr) {
     return 0;
 }
 
+bool test_is_local = true;
+
 bool hal_netlink_is_local_addr(struct in_addr* addr) {
-    struct in_addr local;
-    inet_aton("10.0.0.2", &local); /* Fake the destination as local for the test
-                                      Egress condition */
-    return addr->s_addr == local.s_addr;
+    (void)addr;
+    return test_is_local;
 }
 
 int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex,
@@ -98,7 +99,7 @@ int main() {
             printf("Source IP: %s\n", inet_ntoa(info.key.sender.source_addr));
 
             /* Process the PATH message. Since
-               hal_netlink_is_local_addr(10.0.0.2) is TRUE, this will trigger
+               test_is_local is TRUE, this will trigger
                Egress logic and send a RESV upstream. */
             printf("\n--- Processing PATH at Egress ---\n");
             rsvp_handle_message(&info);
@@ -120,6 +121,96 @@ int main() {
                 rsvp_handle_message(&resv_info);
             } else {
                 printf("RESV Parse FAILED!\n");
+            }
+
+            /* --- Backup Timer Logic Verification --- */
+            printf("\n--- Test: Backup Timer Logic (Transit Node) ---\n");
+            
+            /* Change mock to Transit node (dest is NOT local) */
+            test_is_local = false; 
+
+            /* Test PATH backup */
+            captured_len = 0;
+            printf("Processing 1st PATH at Transit (New PSB)...\n");
+            struct rsvp_message_info path_info;
+            memset(&path_info, 0, sizeof(path_info));
+            
+            uint8_t path_buf[256];
+            struct rsvp_builder pb;
+            rsvp_builder_init(&pb, path_buf, sizeof(path_buf), RSVP_MSG_PATH);
+            struct in_addr t_dest = {0};
+            inet_aton("10.0.0.4", &t_dest);
+            struct in_addr t_src = {0};
+            inet_aton("10.0.0.1", &t_src);
+
+            rsvp_builder_add_session_ipv4(&pb, &t_dest, 100, &t_dest);
+            struct rsvp_sender_ipv4 t_sender;
+            memset(&t_sender, 0, sizeof(t_sender));
+            t_sender.source_addr = t_src;
+            t_sender.lsp_id = htons(100);
+            rsvp_builder_add_obj(&pb, RSVP_CLASS_SENDER_TEMPLATE, 7, &t_sender, sizeof(t_sender));
+            struct in_addr nbr_addr;
+            inet_aton("10.0.0.5", &nbr_addr);
+            rsvp_builder_add_hop_ipv4(&pb, &nbr_addr, 10);
+            size_t path_len = rsvp_builder_finalize(&pb);
+            
+            uint8_t path_pkt_with_ip[256];
+            struct iphdr* path_ip = (struct iphdr*)path_pkt_with_ip;
+            memset(path_ip, 0, 20);
+            path_ip->ihl = 5;
+            memcpy(path_pkt_with_ip + 20, path_buf, path_len);
+            
+            rsvp_parse_packet(path_pkt_with_ip, path_len + 20, &path_info);
+            rsvp_handle_message(&path_info);
+            if (captured_len > 0) {
+                printf("SUCCESS: Sent PATH on NEW PSB\n");
+            } else {
+                printf("FAILURE: Did not send PATH on NEW PSB\n");
+            }
+
+            captured_len = 0;
+            printf("Processing 2nd PATH at Transit (Existing PSB)...\n");
+            rsvp_handle_message(&path_info);
+            if (captured_len == 0) {
+                printf("SUCCESS: Did NOT send redundant PATH (Backup Timer mode)\n");
+            } else {
+                printf("FAILURE: Sent redundant PATH for existing PSB\n");
+            }
+
+            /* Test RESV backup */
+            struct rsvp_message_info resv_info_2;
+            memset(&resv_info_2, 0, sizeof(resv_info_2));
+            
+            uint8_t resv_buf[256];
+            struct rsvp_builder rb;
+            rsvp_builder_init(&rb, resv_buf, sizeof(resv_buf), RSVP_MSG_RESV);
+            rsvp_builder_add_session_ipv4(&rb, &t_dest, 100, &t_dest);
+            rsvp_builder_add_obj(&rb, RSVP_CLASS_FILTER_SPEC, 7, &t_sender, sizeof(t_sender));
+            size_t resv_len = rsvp_builder_finalize(&rb);
+
+            uint8_t resv_pkt_with_ip_2[256];
+            struct iphdr* resv_ip_2 = (struct iphdr*)resv_pkt_with_ip_2;
+            memset(resv_ip_2, 0, 20);
+            resv_ip_2->ihl = 5;
+            memcpy(resv_pkt_with_ip_2 + 20, resv_buf, resv_len);
+
+            captured_len = 0;
+            printf("\nProcessing 1st RESV at Transit (New RSB)...\n");
+            rsvp_parse_packet(resv_pkt_with_ip_2, resv_len + 20, &resv_info_2);
+            rsvp_handle_message(&resv_info_2);
+            if (captured_len > 0) {
+                printf("SUCCESS: Sent RESV on NEW RSB\n");
+            } else {
+                printf("FAILURE: Did not send RESV on NEW RSB\n");
+            }
+
+            captured_len = 0;
+            printf("Processing 2nd RESV at Transit (Existing RSB)...\n");
+            rsvp_handle_message(&resv_info_2);
+            if (captured_len == 0) {
+                printf("SUCCESS: Did NOT send redundant RESV (Backup Timer mode)\n");
+            } else {
+                printf("FAILURE: Sent redundant RESV for existing RSB\n");
             }
 
         } else {

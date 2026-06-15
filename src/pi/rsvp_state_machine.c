@@ -18,13 +18,22 @@
 
 static uint16_t next_lsp_id = 1;
 
-static uint32_t get_jittered_refresh(uint32_t base_ms) {
+static uint32_t get_jittered_refresh(uint32_t base_ms, bool is_backup) {
     if (base_ms == 0) base_ms = RSVP_REFRESH_MS;
-    /* Set to a value T such that 0.5R <= T <= 1.5R */
-    uint32_t min = base_ms / 2;
-    uint32_t range = base_ms;
-    if (range == 0) range = 1;
-    return min + (rand() % range);
+    
+    if (is_backup) {
+        /* Backup timer (Transit): Wait at least R, up to 1.5R */
+        uint32_t min = base_ms;
+        uint32_t range = base_ms / 2;
+        if (range == 0) range = 1;
+        return min + (rand() % range);
+    } else {
+        /* Trigger timer (Ingress/Egress): 0.5R to 1.5R */
+        uint32_t min = base_ms / 2;
+        uint32_t range = base_ms;
+        if (range == 0) range = 1;
+        return min + (rand() % range);
+    }
 }
 
 /* Forward declarations */
@@ -60,14 +69,21 @@ static void handle_path_message(struct rsvp_message_info* info) {
     }
 
     /* Reset Cleanup Timer */
-    rsvp_timer_stop(psb->cleanup_timer_id);
-    psb->cleanup_timer_id = rsvp_timer_start(
-        RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(psb->refresh_ms), psb_cleanup_timer_cb, psb);
+    if (psb->cleanup_timer_id == 0) {
+        psb->cleanup_timer_id = rsvp_timer_start(
+            RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(psb->refresh_ms), psb_cleanup_timer_cb, psb);
+    } else {
+        rsvp_timer_reset(psb->cleanup_timer_id, RSVP_CLEANUP_MS(psb->refresh_ms));
+    }
 
-    /* Refresh Timer: Restarted to jittered value */
-    rsvp_timer_stop(psb->refresh_timer_id);
-    psb->refresh_timer_id = rsvp_timer_start(
-        RSVP_TIMER_REFRESH, get_jittered_refresh(psb->refresh_ms), psb_refresh_timer_cb, psb);
+    /* Refresh Timer: Reset to jittered backup value for Transit nodes */
+    uint32_t next_refresh = get_jittered_refresh(psb->refresh_ms, true);
+    if (psb->refresh_timer_id == 0) {
+        psb->refresh_timer_id = rsvp_timer_start(
+            RSVP_TIMER_REFRESH, next_refresh, psb_refresh_timer_cb, psb);
+    } else {
+        rsvp_timer_reset(psb->refresh_timer_id, next_refresh);
+    }
 
     if (info->hop_v4) {
         psb->prev_hop = *info->hop_v4;
@@ -90,7 +106,7 @@ static void handle_path_message(struct rsvp_message_info* info) {
                     RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(rsb->refresh_ms), rsb_cleanup_timer_cb,
                     rsb);
                 rsb->refresh_timer_id = rsvp_timer_start(
-                    RSVP_TIMER_REFRESH, get_jittered_refresh(rsb->refresh_ms), rsb_refresh_timer_cb,
+                    RSVP_TIMER_REFRESH, get_jittered_refresh(rsb->refresh_ms, false), rsb_refresh_timer_cb,
                     rsb);
 
                 send_resv_upstream(rsb);
@@ -117,30 +133,14 @@ static void handle_path_message(struct rsvp_message_info* info) {
             return;
         }
 
-        LOG_INFO(
-            "Transit: Forwarding PATH downstream to %s (via ifindex %d)...",
-            inet_ntoa(next_hop), out_ifindex);
         psb->ifindex_out = out_ifindex;
 
-        if (info->hop_v4) {
-            struct in_addr local_addr = {0};
-            if (hal_netlink_get_local_addr(out_ifindex, &local_addr) == 0) {
-                info->hop_v4->neighbor_addr = local_addr;
-                info->hop_v4->logical_interface = htonl(out_ifindex);
-            }
+        if (is_new) {
+            LOG_INFO("Transit: New PSB, sending PATH downstream...");
+            send_path_downstream(psb);
+        } else {
+            LOG_INFO("Transit: Existing PSB, refresh timer reset (backup mode)");
         }
-
-        if (info->common_hdr->ttl > 0) {
-            info->common_hdr->ttl--;
-        }
-        info->common_hdr->checksum = 0;
-        info->common_hdr->checksum = rsvp_checksum(
-            (uint16_t*)info->common_hdr, ntohs(info->common_hdr->length));
-
-        /* Forward PATH directly to session destination with RAO */
-        struct in_addr src_ip = info->key.sender.source_addr;
-        rsvp_send_packet(&src_ip, &dest, (uint8_t*)info->common_hdr,
-                         ntohs(info->common_hdr->length), true);
     }
 }
 
@@ -168,14 +168,21 @@ static void handle_resv_message(struct rsvp_message_info* info) {
     }
 
     /* Reset Cleanup Timer */
-    rsvp_timer_stop(rsb->cleanup_timer_id);
-    rsb->cleanup_timer_id = rsvp_timer_start(
-        RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(rsb->refresh_ms), rsb_cleanup_timer_cb, rsb);
+    if (rsb->cleanup_timer_id == 0) {
+        rsb->cleanup_timer_id = rsvp_timer_start(
+            RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(rsb->refresh_ms), rsb_cleanup_timer_cb, rsb);
+    } else {
+        rsvp_timer_reset(rsb->cleanup_timer_id, RSVP_CLEANUP_MS(rsb->refresh_ms));
+    }
 
-    /* Refresh Timer: Restarted to jittered value */
-    rsvp_timer_stop(rsb->refresh_timer_id);
-    rsb->refresh_timer_id = rsvp_timer_start(
-        RSVP_TIMER_REFRESH, get_jittered_refresh(rsb->refresh_ms), rsb_refresh_timer_cb, rsb);
+    /* Refresh Timer: Reset to jittered backup value for Transit nodes */
+    uint32_t next_refresh_rsb = get_jittered_refresh(rsb->refresh_ms, true);
+    if (rsb->refresh_timer_id == 0) {
+        rsb->refresh_timer_id = rsvp_timer_start(
+            RSVP_TIMER_REFRESH, next_refresh_rsb, rsb_refresh_timer_cb, rsb);
+    } else {
+        rsvp_timer_reset(rsb->refresh_timer_id, next_refresh_rsb);
+    }
 
     if (info->label) {
         rsb->label_out = ntohl(info->label->label) >> 12;
@@ -536,7 +543,7 @@ void rsvp_initiate_path(struct in_addr* src, struct in_addr* dest,
             RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(psb->refresh_ms),
             psb_cleanup_timer_cb, psb);
         psb->refresh_timer_id = rsvp_timer_start(
-            RSVP_TIMER_REFRESH, get_jittered_refresh(psb->refresh_ms),
+            RSVP_TIMER_REFRESH, get_jittered_refresh(psb->refresh_ms, false),
             psb_refresh_timer_cb, psb);
         psb->lsp_name = lsp_name ? strdup(lsp_name) : NULL;
     }
@@ -554,7 +561,7 @@ static void psb_refresh_timer_cb(void* arg) {
     }
 
     psb->refresh_timer_id = rsvp_timer_start(
-        RSVP_TIMER_REFRESH, get_jittered_refresh(psb->refresh_ms),
+        RSVP_TIMER_REFRESH, get_jittered_refresh(psb->refresh_ms, psb->prev_hop.neighbor_addr.s_addr != 0),
         psb_refresh_timer_cb, psb);
 }
 
@@ -581,8 +588,16 @@ static void rsb_refresh_timer_cb(void* arg) {
         send_resv_upstream(rsb);
     }
 
+    /* Check if we are Transit for this RSB */
+    bool is_rsb_backup = false;
+    if (rsb->associated_psb && rsb->associated_psb->key.session.dest_addr.s_addr != 0) {
+        if (!hal_netlink_is_local_addr(&rsb->associated_psb->key.session.dest_addr)) {
+            is_rsb_backup = true;
+        }
+    }
+
     rsb->refresh_timer_id = rsvp_timer_start(
-        RSVP_TIMER_REFRESH, get_jittered_refresh(rsb->refresh_ms),
+        RSVP_TIMER_REFRESH, get_jittered_refresh(rsb->refresh_ms, is_rsb_backup),
         rsb_refresh_timer_cb, rsb);
 }
 
