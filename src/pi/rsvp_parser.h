@@ -12,6 +12,8 @@
  */
 struct rsvp_message_info {
     struct rsvp_common_hdr* common_hdr;
+    struct in_addr src_ip;
+    struct in_addr dst_ip;
     struct rsvp_path_key key;
     uint8_t* payload;
     size_t payload_len;

@@ -1,0 +1,510 @@
+[2026-06-15 15:45:26] [INFO] rsvp_state_db_init:22: Initializing RSVP State Database
+[2026-06-15 15:45:26] [INFO] rsvp_initiate_path:651: Initiating PATH: [TunnelID: 1, Dest: 10.0.0.2, Source: 10.0.0.1, LSP Name: test_lsp_01]
+[2026-06-15 15:45:26] [DEBUG] rsvp_initiate_path:666:   - Creating new PSB for initiated PATH
+[2026-06-15 15:45:26] [DEBUG] rsvp_psb_create:45: Creating PSB: Tunnel ID 1, Dest 10.0.0.2, Source 10.0.0.1
+[2026-06-15 15:45:26] [DEBUG] rsvp_initiate_path:675:   - Starting Ingress Refresh Timer: 29383 ms
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 1 (Buffer Size: 1024)
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 5, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 19, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 207, C-Type: 7, DataLen: 15, Aligned: 20]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 11, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 12, C-Type: 2, DataLen: 32, Aligned: 36]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 1, Length: 120, Checksum: 0x503a]
+[2026-06-15 15:45:26] [INFO] send_path_downstream:641:   - Sending PATH downstream to 10.0.0.2 (Length: 120)
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:12: Parser: Starting RSVP packet parsing (Length: 140)
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:35: Parser: RSVP Header [Ver: 1, Type: 1, Flags: 0x0, Length: 120, TTL: 255]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:81: Parser: Checksum OK
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 1, C-Type: 7, Length: 16]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:111:   - SESSION IPv4: Dest 10.0.0.2, TunnelID 1
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 3, C-Type: 1, Length: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:121:   - HOP IPv4: Neighbor 10.0.0.1, IfIndex 5
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 5, C-Type: 1, Length: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:128:   - TIME VALUES: Refresh 30000 ms
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 19, C-Type: 1, Length: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:164:   - LABEL REQUEST: L3PID 0x0800
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 207, C-Type: 7, Length: 20]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:177:   - SESSION ATTRIB: Name test_lsp_01
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 11, C-Type: 7, Length: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:150:   - SENDER/FILTER IPv4: Source 10.0.0.1, LSP-ID 1
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 12, C-Type: 2, Length: 36]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:183:   - Unhandled object class 12
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:220: Parser: Parse SUCCESS
+[2026-06-15 15:45:26] [INFO] handle_path_message:62: Handling PATH: [TunnelID: 1, Dest: 10.0.0.2, Source: 10.0.0.1, PrevHop: 10.0.0.1]
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:75:   - Found existing PSB
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:80:   - Updated Refresh Interval: 30000 ms
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:85:   - Message TTL: 255
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:94:   - LSP Name: test_lsp_01
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:111:   - Starting Refresh Timer: 30886 ms (Jittered)
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:119:   - Input Interface Index: 5
+[2026-06-15 15:45:26] [INFO] handle_path_message:125:   - Role: EGRESS (Dest 10.0.0.2 is local)
+[2026-06-15 15:45:26] [INFO] handle_path_message:128:   - Triggering initial RESV...
+[2026-06-15 15:45:26] [DEBUG] rsvp_rsb_create:105: Creating RSB: Tunnel ID 1, Dest 10.0.0.2, Source 10.0.0.1
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:136:   - Starting RSB Refresh Timer: 24777 ms
+[2026-06-15 15:45:26] [DEBUG] send_resv_upstream:457:   - Allocated label_in: 1000
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 2 (Buffer Size: 1024)
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 5, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 8, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 9, C-Type: 2, DataLen: 32, Aligned: 36]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 10, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 16, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 2, Length: 108, Checksum: 0xf501]
+[2026-06-15 15:45:26] [INFO] send_resv_upstream:511:   - Sending RESV upstream to 10.0.0.1 (Length: 108)
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:12: Parser: Starting RSVP packet parsing (Length: 128)
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:35: Parser: RSVP Header [Ver: 1, Type: 2, Flags: 0x0, Length: 108, TTL: 255]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:81: Parser: Checksum OK
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 1, C-Type: 7, Length: 16]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:111:   - SESSION IPv4: Dest 10.0.0.2, TunnelID 1
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 3, C-Type: 1, Length: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:121:   - HOP IPv4: Neighbor 10.0.0.1, IfIndex 5
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 5, C-Type: 1, Length: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:128:   - TIME VALUES: Refresh 30000 ms
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 8, C-Type: 1, Length: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:183:   - Unhandled object class 8
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 9, C-Type: 2, Length: 36]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:183:   - Unhandled object class 9
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 10, C-Type: 7, Length: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:150:   - SENDER/FILTER IPv4: Source 10.0.0.1, LSP-ID 1
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 16, C-Type: 1, Length: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:157:   - LABEL: 1000
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:220: Parser: Parse SUCCESS
+[2026-06-15 15:45:26] [INFO] handle_resv_message:187: Handling RESV: [TunnelID: 1, Dest: 10.0.0.2, Source: 10.0.0.1, Label: 1000, NextHop: 10.0.0.1]
+[2026-06-15 15:45:26] [DEBUG] handle_resv_message:209:   - Found existing RSB
+[2026-06-15 15:45:26] [DEBUG] handle_resv_message:214:   - Updated RSB Refresh Interval: 30000 ms
+[2026-06-15 15:45:26] [DEBUG] handle_resv_message:219:   - RSB Message TTL: 255
+[2026-06-15 15:45:26] [DEBUG] handle_resv_message:224:   - (Re)starting RSB Cleanup Timer: 90000 ms
+[2026-06-15 15:45:26] [INFO] handle_resv_message:264:   - TRANSIT: Programming MPLS SWAP [1000 -> 1000] via if 5
+[2026-06-15 15:45:26] [INFO] handle_resv_message:273:   - Forwarding RESV upstream to 10.0.0.1
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 2 (Buffer Size: 1024)
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 5, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 8, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 9, C-Type: 2, DataLen: 32, Aligned: 36]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 10, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 16, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 2, Length: 108, Checksum: 0xf601]
+[2026-06-15 15:45:26] [INFO] send_resv_upstream:511:   - Sending RESV upstream to 10.0.0.1 (Length: 108)
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 1 (Buffer Size: 256)
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 11, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 1, Length: 48, Checksum: 0xb8b6]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:12: Parser: Starting RSVP packet parsing (Length: 68)
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:35: Parser: RSVP Header [Ver: 1, Type: 1, Flags: 0x0, Length: 48, TTL: 255]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:81: Parser: Checksum OK
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 1, C-Type: 7, Length: 16]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:111:   - SESSION IPv4: Dest 10.0.0.4, TunnelID 100
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 11, C-Type: 7, Length: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:150:   - SENDER/FILTER IPv4: Source 10.0.0.1, LSP-ID 100
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 3, C-Type: 1, Length: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:121:   - HOP IPv4: Neighbor 10.0.0.5, IfIndex 10
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:220: Parser: Parse SUCCESS
+[2026-06-15 15:45:26] [INFO] handle_path_message:62: Handling PATH: [TunnelID: 100, Dest: 10.0.0.4, Source: 10.0.0.1, PrevHop: 10.0.0.5]
+[2026-06-15 15:45:26] [INFO] handle_path_message:70:   - New PATH detected, creating PSB
+[2026-06-15 15:45:26] [DEBUG] rsvp_psb_create:45: Creating PSB: Tunnel ID 100, Dest 10.0.0.4, Source 10.0.0.1
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:85:   - Message TTL: 255
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:100:   - (Re)starting Cleanup Timer: 90000 ms
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:111:   - Starting Refresh Timer: 37915 ms (Jittered)
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:119:   - Input Interface Index: 10
+[2026-06-15 15:45:26] [INFO] handle_path_message:165:   - Role: TRANSIT. NextHop: 10.0.0.4, OutIf: 5
+[2026-06-15 15:45:26] [INFO] handle_path_message:170:   - New Transit state, forwarding PATH downstream...
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 1 (Buffer Size: 1024)
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 5, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 19, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 207, C-Type: 7, DataLen: 4, Aligned: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 11, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 12, C-Type: 2, DataLen: 32, Aligned: 36]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 1, Length: 108, Checksum: 0x9b79]
+[2026-06-15 15:45:26] [INFO] send_path_downstream:641:   - Sending PATH downstream to 10.0.0.4 (Length: 108)
+[2026-06-15 15:45:26] [INFO] handle_path_message:62: Handling PATH: [TunnelID: 100, Dest: 10.0.0.4, Source: 10.0.0.1, PrevHop: 10.0.0.5]
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:75:   - Found existing PSB
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:85:   - Message TTL: 255
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:100:   - (Re)starting Cleanup Timer: 90000 ms
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:111:   - Starting Refresh Timer: 34793 ms (Jittered)
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:119:   - Input Interface Index: 10
+[2026-06-15 15:45:26] [INFO] handle_path_message:165:   - Role: TRANSIT. NextHop: 10.0.0.4, OutIf: 5
+[2026-06-15 15:45:26] [DEBUG] handle_path_message:173:   - Transit state refreshed
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 2 (Buffer Size: 256)
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 10, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 2, Length: 36, Checksum: 0xc6dd]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:12: Parser: Starting RSVP packet parsing (Length: 56)
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:35: Parser: RSVP Header [Ver: 1, Type: 2, Flags: 0x0, Length: 36, TTL: 255]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:81: Parser: Checksum OK
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 1, C-Type: 7, Length: 16]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:111:   - SESSION IPv4: Dest 10.0.0.4, TunnelID 100
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 10, C-Type: 7, Length: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_parse_packet:150:   - SENDER/FILTER IPv4: Source 10.0.0.1, LSP-ID 100
+[2026-06-15 15:45:26] [WARN] rsvp_parse_packet:212: Parser: RESV missing mandatory HOP object
+[2026-06-15 15:45:26] [INFO] handle_resv_message:187: Handling RESV: [TunnelID: 100, Dest: 10.0.0.4, Source: 10.0.0.1, Label: 0, NextHop: N/A]
+[2026-06-15 15:45:26] [INFO] handle_resv_message:194:   - New RESV detected, creating RSB
+[2026-06-15 15:45:26] [DEBUG] rsvp_rsb_create:105: Creating RSB: Tunnel ID 100, Dest 10.0.0.4, Source 10.0.0.1
+[2026-06-15 15:45:26] [DEBUG] handle_resv_message:201:   - Associated RSB with existing PSB
+[2026-06-15 15:45:26] [DEBUG] handle_resv_message:219:   - RSB Message TTL: 255
+[2026-06-15 15:45:26] [DEBUG] handle_resv_message:224:   - (Re)starting RSB Cleanup Timer: 90000 ms
+[2026-06-15 15:45:26] [DEBUG] handle_resv_message:236:   - Starting RSB Upstream Refresh Timer: 35335 ms
+[2026-06-15 15:45:26] [DEBUG] handle_resv_message:262:   - Allocated Inbound Label: 1001
+[2026-06-15 15:45:26] [INFO] handle_resv_message:264:   - TRANSIT: Programming MPLS SWAP [1001 -> 0] via if 0
+[2026-06-15 15:45:26] [INFO] handle_resv_message:273:   - Forwarding RESV upstream to 10.0.0.5
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 2 (Buffer Size: 1024)
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 5, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 8, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 9, C-Type: 2, DataLen: 32, Aligned: 36]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 10, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 16, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 15:45:26] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 2, Length: 108, Checksum: 0xe536]
+[2026-06-15 15:45:26] [INFO] send_resv_upstream:511:   - Sending RESV upstream to 10.0.0.5 (Length: 108)
+[2026-06-15 15:45:26] [INFO] handle_resv_message:187: Handling RESV: [TunnelID: 100, Dest: 10.0.0.4, Source: 10.0.0.1, Label: 0, NextHop: N/A]
+[2026-06-15 15:45:26] [DEBUG] handle_resv_message:209:   - Found existing RSB
+[2026-06-15 15:45:26] [DEBUG] handle_resv_message:219:   - RSB Message TTL: 255
+[2026-06-15 15:45:26] [DEBUG] handle_resv_message:224:   - (Re)starting RSB Cleanup Timer: 90000 ms
+[2026-06-15 15:45:26] [DEBUG] handle_resv_message:236:   - Starting RSB Upstream Refresh Timer: 38386 ms
+[2026-06-15 15:45:26] [DEBUG] handle_resv_message:291:   - RSB state refreshed (no label change)
+[2026-06-15 16:52:00] [INFO] rsvp_state_db_init:23: Initializing RSVP State Database
+[2026-06-15 16:52:00] [INFO] rsvp_initiate_path:757: Initiating PATH: [TunnelID: 1, Dest: 10.0.0.2, Source: 10.0.0.1, LSP Name: test_lsp_01]
+[2026-06-15 16:52:00] [DEBUG] rsvp_initiate_path:772:   - Creating new PSB for initiated PATH
+[2026-06-15 16:52:00] [DEBUG] rsvp_psb_create:46: Creating PSB: Tunnel ID 1, Dest 10.0.0.2, Source 10.0.0.1
+[2026-06-15 16:52:00] [DEBUG] rsvp_initiate_path:781:   - Starting Ingress Refresh Timer: 29383 ms
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 1 (Buffer Size: 1024)
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 5, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 19, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 207, C-Type: 7, DataLen: 15, Aligned: 20]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 11, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 12, C-Type: 2, DataLen: 32, Aligned: 36]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 1, Length: 120, Checksum: 0x503a]
+[2026-06-15 16:52:00] [INFO] send_path_downstream:747:   - Sending PATH downstream to 10.0.0.2 (Length: 120)
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:12: Parser: Starting RSVP packet parsing (Length: 140)
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:35: Parser: RSVP Header [Ver: 1, Type: 1, Flags: 0x0, Length: 120, TTL: 255]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:81: Parser: Checksum OK
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 1, C-Type: 7, Length: 16]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:111:   - SESSION IPv4: Dest 10.0.0.2, TunnelID 1
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 3, C-Type: 1, Length: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:121:   - HOP IPv4: Neighbor 10.0.0.1, IfIndex 5
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 5, C-Type: 1, Length: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:128:   - TIME VALUES: Refresh 30000 ms
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 19, C-Type: 1, Length: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:164:   - LABEL REQUEST: L3PID 0x0800
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 207, C-Type: 7, Length: 20]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:177:   - SESSION ATTRIB: Name test_lsp_01
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 11, C-Type: 7, Length: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:150:   - SENDER/FILTER IPv4: Source 10.0.0.1, LSP-ID 1
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 12, C-Type: 2, Length: 36]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:183:   - Unhandled object class 12
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:220: Parser: Parse SUCCESS
+[2026-06-15 16:52:00] [INFO] handle_path_message:65: Handling PATH: [TunnelID: 1, Dest: 10.0.0.2, Source: 10.0.0.1, PrevHop: 10.0.0.1]
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:78:   - Found existing PSB
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:83:   - Updated Refresh Interval: 30000 ms
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:88:   - Message TTL: 255
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:97:   - LSP Name: test_lsp_01
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:114:   - Starting Refresh Timer: 30886 ms (Jittered)
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:122:   - Input Interface Index: 5
+[2026-06-15 16:52:00] [INFO] handle_path_message:128:   - Role: EGRESS (Dest 10.0.0.2 is local)
+[2026-06-15 16:52:00] [INFO] handle_path_message:131:   - Triggering initial RESV...
+[2026-06-15 16:52:00] [DEBUG] rsvp_rsb_create:106: Creating RSB: Tunnel ID 1, Dest 10.0.0.2, Source 10.0.0.1
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:139:   - Starting RSB Refresh Timer: 24777 ms
+[2026-06-15 16:52:00] [DEBUG] send_resv_upstream:456:   - Allocated label_in: 1000
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 2 (Buffer Size: 1024)
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 5, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 8, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 9, C-Type: 2, DataLen: 32, Aligned: 36]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 10, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 16, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 2, Length: 108, Checksum: 0xf501]
+[2026-06-15 16:52:00] [INFO] send_resv_upstream:510:   - Sending RESV upstream to 10.0.0.1 (Length: 108)
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:12: Parser: Starting RSVP packet parsing (Length: 128)
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:35: Parser: RSVP Header [Ver: 1, Type: 2, Flags: 0x0, Length: 108, TTL: 255]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:81: Parser: Checksum OK
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 1, C-Type: 7, Length: 16]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:111:   - SESSION IPv4: Dest 10.0.0.2, TunnelID 1
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 3, C-Type: 1, Length: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:121:   - HOP IPv4: Neighbor 10.0.0.1, IfIndex 5
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 5, C-Type: 1, Length: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:128:   - TIME VALUES: Refresh 30000 ms
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 8, C-Type: 1, Length: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:183:   - Unhandled object class 8
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 9, C-Type: 2, Length: 36]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:183:   - Unhandled object class 9
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 10, C-Type: 7, Length: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:150:   - SENDER/FILTER IPv4: Source 10.0.0.1, LSP-ID 1
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 16, C-Type: 1, Length: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:157:   - LABEL: 1000
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:220: Parser: Parse SUCCESS
+[2026-06-15 16:52:00] [INFO] handle_resv_message:190: Handling RESV: [TunnelID: 1, Dest: 10.0.0.2, Source: 10.0.0.1, Label: 1000, NextHop: 10.0.0.1]
+[2026-06-15 16:52:00] [DEBUG] handle_resv_message:212:   - Found existing RSB
+[2026-06-15 16:52:00] [DEBUG] handle_resv_message:217:   - Updated RSB Refresh Interval: 30000 ms
+[2026-06-15 16:52:00] [DEBUG] handle_resv_message:222:   - RSB Message TTL: 255
+[2026-06-15 16:52:00] [DEBUG] handle_resv_message:227:   - (Re)starting RSB Cleanup Timer: 90000 ms
+[2026-06-15 16:52:00] [INFO] handle_resv_message:267:   - TRANSIT: Programming MPLS SWAP [1000 -> 1000] via if 5
+[2026-06-15 16:52:00] [INFO] handle_resv_message:276:   - Forwarding RESV upstream to 10.0.0.1
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 2 (Buffer Size: 1024)
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 5, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 8, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 9, C-Type: 2, DataLen: 32, Aligned: 36]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 10, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 16, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 2, Length: 108, Checksum: 0xf601]
+[2026-06-15 16:52:00] [INFO] send_resv_upstream:510:   - Sending RESV upstream to 10.0.0.1 (Length: 108)
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 1 (Buffer Size: 256)
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 11, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 1, Length: 48, Checksum: 0xb8b6]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:12: Parser: Starting RSVP packet parsing (Length: 68)
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:35: Parser: RSVP Header [Ver: 1, Type: 1, Flags: 0x0, Length: 48, TTL: 255]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:81: Parser: Checksum OK
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 1, C-Type: 7, Length: 16]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:111:   - SESSION IPv4: Dest 10.0.0.4, TunnelID 100
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 11, C-Type: 7, Length: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:150:   - SENDER/FILTER IPv4: Source 10.0.0.1, LSP-ID 100
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 3, C-Type: 1, Length: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:121:   - HOP IPv4: Neighbor 10.0.0.5, IfIndex 10
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:220: Parser: Parse SUCCESS
+[2026-06-15 16:52:00] [INFO] handle_path_message:65: Handling PATH: [TunnelID: 100, Dest: 10.0.0.4, Source: 10.0.0.1, PrevHop: 10.0.0.5]
+[2026-06-15 16:52:00] [INFO] handle_path_message:73:   - New PATH detected, creating PSB
+[2026-06-15 16:52:00] [DEBUG] rsvp_psb_create:46: Creating PSB: Tunnel ID 100, Dest 10.0.0.4, Source 10.0.0.1
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:88:   - Message TTL: 255
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:103:   - (Re)starting Cleanup Timer: 90000 ms
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:114:   - Starting Refresh Timer: 37915 ms (Jittered)
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:122:   - Input Interface Index: 10
+[2026-06-15 16:52:00] [INFO] handle_path_message:168:   - Role: TRANSIT. NextHop: 10.0.0.4, OutIf: 5
+[2026-06-15 16:52:00] [INFO] handle_path_message:173:   - New Transit state, forwarding PATH downstream...
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 1 (Buffer Size: 1024)
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 5, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 19, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 207, C-Type: 7, DataLen: 4, Aligned: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 11, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 12, C-Type: 2, DataLen: 32, Aligned: 36]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 1, Length: 108, Checksum: 0x9b79]
+[2026-06-15 16:52:00] [INFO] send_path_downstream:747:   - Sending PATH downstream to 10.0.0.4 (Length: 108)
+[2026-06-15 16:52:00] [INFO] handle_path_message:65: Handling PATH: [TunnelID: 100, Dest: 10.0.0.4, Source: 10.0.0.1, PrevHop: 10.0.0.5]
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:78:   - Found existing PSB
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:88:   - Message TTL: 255
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:103:   - (Re)starting Cleanup Timer: 90000 ms
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:114:   - Starting Refresh Timer: 34793 ms (Jittered)
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:122:   - Input Interface Index: 10
+[2026-06-15 16:52:00] [INFO] handle_path_message:168:   - Role: TRANSIT. NextHop: 10.0.0.4, OutIf: 5
+[2026-06-15 16:52:00] [DEBUG] handle_path_message:176:   - Transit state refreshed
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 2 (Buffer Size: 256)
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 10, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 2, Length: 36, Checksum: 0xc6dd]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:12: Parser: Starting RSVP packet parsing (Length: 56)
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:35: Parser: RSVP Header [Ver: 1, Type: 2, Flags: 0x0, Length: 36, TTL: 255]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:81: Parser: Checksum OK
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 1, C-Type: 7, Length: 16]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:111:   - SESSION IPv4: Dest 10.0.0.4, TunnelID 100
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 10, C-Type: 7, Length: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_parse_packet:150:   - SENDER/FILTER IPv4: Source 10.0.0.1, LSP-ID 100
+[2026-06-15 16:52:00] [WARN] rsvp_parse_packet:212: Parser: RESV missing mandatory HOP object
+[2026-06-15 16:52:00] [INFO] handle_resv_message:190: Handling RESV: [TunnelID: 100, Dest: 10.0.0.4, Source: 10.0.0.1, Label: 0, NextHop: N/A]
+[2026-06-15 16:52:00] [INFO] handle_resv_message:197:   - New RESV detected, creating RSB
+[2026-06-15 16:52:00] [DEBUG] rsvp_rsb_create:106: Creating RSB: Tunnel ID 100, Dest 10.0.0.4, Source 10.0.0.1
+[2026-06-15 16:52:00] [DEBUG] handle_resv_message:204:   - Associated RSB with existing PSB
+[2026-06-15 16:52:00] [DEBUG] handle_resv_message:222:   - RSB Message TTL: 255
+[2026-06-15 16:52:00] [DEBUG] handle_resv_message:227:   - (Re)starting RSB Cleanup Timer: 90000 ms
+[2026-06-15 16:52:00] [DEBUG] handle_resv_message:239:   - Starting RSB Upstream Refresh Timer: 35335 ms
+[2026-06-15 16:52:00] [DEBUG] handle_resv_message:265:   - Allocated Inbound Label: 1001
+[2026-06-15 16:52:00] [INFO] handle_resv_message:267:   - TRANSIT: Programming MPLS SWAP [1001 -> 0] via if 0
+[2026-06-15 16:52:00] [INFO] handle_resv_message:276:   - Forwarding RESV upstream to 10.0.0.5
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 2 (Buffer Size: 1024)
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 5, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 8, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 9, C-Type: 2, DataLen: 32, Aligned: 36]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 10, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 16, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 16:52:00] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 2, Length: 108, Checksum: 0xe536]
+[2026-06-15 16:52:00] [INFO] send_resv_upstream:510:   - Sending RESV upstream to 10.0.0.5 (Length: 108)
+[2026-06-15 16:52:00] [INFO] handle_resv_message:190: Handling RESV: [TunnelID: 100, Dest: 10.0.0.4, Source: 10.0.0.1, Label: 0, NextHop: N/A]
+[2026-06-15 16:52:00] [DEBUG] handle_resv_message:212:   - Found existing RSB
+[2026-06-15 16:52:00] [DEBUG] handle_resv_message:222:   - RSB Message TTL: 255
+[2026-06-15 16:52:00] [DEBUG] handle_resv_message:227:   - (Re)starting RSB Cleanup Timer: 90000 ms
+[2026-06-15 16:52:00] [DEBUG] handle_resv_message:239:   - Starting RSB Upstream Refresh Timer: 38386 ms
+[2026-06-15 16:52:00] [DEBUG] handle_resv_message:294:   - RSB state refreshed (no label change)
+[2026-06-15 17:02:56] [INFO] rsvp_state_db_init:23: Initializing RSVP State Database
+[2026-06-15 17:02:56] [INFO] rsvp_initiate_path:759: Initiating PATH: [TunnelID: 1, Dest: 10.0.0.2, Source: 10.0.0.1, LSP Name: test_lsp_01]
+[2026-06-15 17:02:56] [DEBUG] rsvp_initiate_path:774:   - Creating new PSB for initiated PATH
+[2026-06-15 17:02:56] [DEBUG] rsvp_psb_create:46: Creating PSB: Tunnel ID 1, Dest 10.0.0.2, Source 10.0.0.1
+[2026-06-15 17:02:56] [DEBUG] rsvp_initiate_path:783:   - Starting Ingress Refresh Timer: 29383 ms
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 1 (Buffer Size: 1024)
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 5, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 19, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 207, C-Type: 7, DataLen: 15, Aligned: 20]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 11, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 12, C-Type: 2, DataLen: 32, Aligned: 36]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 1, Length: 120, Checksum: 0x503a]
+[2026-06-15 17:02:56] [INFO] send_path_downstream:749:   - Sending PATH downstream to 10.0.0.2 (Length: 120)
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:12: Parser: Starting RSVP packet parsing (Length: 140)
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:35: Parser: RSVP Header [Ver: 1, Type: 1, Flags: 0x0, Length: 120, TTL: 255]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:81: Parser: Checksum OK
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 1, C-Type: 7, Length: 16]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:111:   - SESSION IPv4: Dest 10.0.0.2, TunnelID 1
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 3, C-Type: 1, Length: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:121:   - HOP IPv4: Neighbor 10.0.0.1, IfIndex 5
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 5, C-Type: 1, Length: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:128:   - TIME VALUES: Refresh 30000 ms
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 19, C-Type: 1, Length: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:164:   - LABEL REQUEST: L3PID 0x0800
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 207, C-Type: 7, Length: 20]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:177:   - SESSION ATTRIB: Name test_lsp_01
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 11, C-Type: 7, Length: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:150:   - SENDER/FILTER IPv4: Source 10.0.0.1, LSP-ID 1
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 12, C-Type: 2, Length: 36]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:183:   - Unhandled object class 12
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:220: Parser: Parse SUCCESS
+[2026-06-15 17:02:56] [INFO] handle_path_message:65: Handling PATH: [TunnelID: 1, Dest: 10.0.0.2, Source: 10.0.0.1, PrevHop: 10.0.0.1]
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:78:   - Found existing PSB
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:83:   - Updated Refresh Interval: 30000 ms
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:88:   - Message TTL: 255
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:97:   - LSP Name: test_lsp_01
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:114:   - Starting Refresh Timer: 30886 ms (Jittered)
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:122:   - Input Interface Index: 5
+[2026-06-15 17:02:56] [INFO] handle_path_message:128:   - Role: EGRESS (Dest 10.0.0.2 is local)
+[2026-06-15 17:02:56] [INFO] handle_path_message:131:   - Triggering initial RESV...
+[2026-06-15 17:02:56] [DEBUG] rsvp_rsb_create:106: Creating RSB: Tunnel ID 1, Dest 10.0.0.2, Source 10.0.0.1
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:139:   - Starting RSB Refresh Timer: 24777 ms
+[2026-06-15 17:02:56] [DEBUG] send_resv_upstream:458:   - Allocated label_in: 1000
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 2 (Buffer Size: 1024)
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 5, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 8, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 9, C-Type: 2, DataLen: 32, Aligned: 36]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 10, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 16, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 2, Length: 108, Checksum: 0xf501]
+[2026-06-15 17:02:56] [INFO] send_resv_upstream:512:   - Sending RESV upstream to 10.0.0.1 (Length: 108)
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:12: Parser: Starting RSVP packet parsing (Length: 128)
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:35: Parser: RSVP Header [Ver: 1, Type: 2, Flags: 0x0, Length: 108, TTL: 255]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:81: Parser: Checksum OK
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 1, C-Type: 7, Length: 16]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:111:   - SESSION IPv4: Dest 10.0.0.2, TunnelID 1
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 3, C-Type: 1, Length: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:121:   - HOP IPv4: Neighbor 10.0.0.1, IfIndex 5
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 5, C-Type: 1, Length: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:128:   - TIME VALUES: Refresh 30000 ms
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 8, C-Type: 1, Length: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:183:   - Unhandled object class 8
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 9, C-Type: 2, Length: 36]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:183:   - Unhandled object class 9
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 10, C-Type: 7, Length: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:150:   - SENDER/FILTER IPv4: Source 10.0.0.1, LSP-ID 1
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 16, C-Type: 1, Length: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:157:   - LABEL: 1000
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:220: Parser: Parse SUCCESS
+[2026-06-15 17:02:56] [INFO] handle_resv_message:190: Handling RESV: [TunnelID: 1, Dest: 10.0.0.2, Source: 10.0.0.1, Label: 1000, NextHop: 10.0.0.1]
+[2026-06-15 17:02:56] [DEBUG] handle_resv_message:212:   - Found existing RSB
+[2026-06-15 17:02:56] [DEBUG] handle_resv_message:217:   - Updated RSB Refresh Interval: 30000 ms
+[2026-06-15 17:02:56] [DEBUG] handle_resv_message:222:   - RSB Message TTL: 255
+[2026-06-15 17:02:56] [DEBUG] handle_resv_message:227:   - (Re)starting RSB Cleanup Timer: 90000 ms
+[2026-06-15 17:02:56] [INFO] handle_resv_message:267:   - TRANSIT: Programming MPLS SWAP [1000 -> 1000] via if 5
+[2026-06-15 17:02:56] [INFO] handle_resv_message:276:   - Forwarding RESV upstream to 10.0.0.1
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 2 (Buffer Size: 1024)
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 5, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 8, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 9, C-Type: 2, DataLen: 32, Aligned: 36]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 10, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 16, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 2, Length: 108, Checksum: 0xf601]
+[2026-06-15 17:02:56] [INFO] send_resv_upstream:512:   - Sending RESV upstream to 10.0.0.1 (Length: 108)
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 1 (Buffer Size: 256)
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 11, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 1, Length: 48, Checksum: 0xb8b6]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:12: Parser: Starting RSVP packet parsing (Length: 68)
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:35: Parser: RSVP Header [Ver: 1, Type: 1, Flags: 0x0, Length: 48, TTL: 255]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:81: Parser: Checksum OK
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 1, C-Type: 7, Length: 16]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:111:   - SESSION IPv4: Dest 10.0.0.4, TunnelID 100
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 11, C-Type: 7, Length: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:150:   - SENDER/FILTER IPv4: Source 10.0.0.1, LSP-ID 100
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 3, C-Type: 1, Length: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:121:   - HOP IPv4: Neighbor 10.0.0.5, IfIndex 10
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:220: Parser: Parse SUCCESS
+[2026-06-15 17:02:56] [INFO] handle_path_message:65: Handling PATH: [TunnelID: 100, Dest: 10.0.0.4, Source: 10.0.0.1, PrevHop: 10.0.0.5]
+[2026-06-15 17:02:56] [INFO] handle_path_message:73:   - New PATH detected, creating PSB
+[2026-06-15 17:02:56] [DEBUG] rsvp_psb_create:46: Creating PSB: Tunnel ID 100, Dest 10.0.0.4, Source 10.0.0.1
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:88:   - Message TTL: 255
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:103:   - (Re)starting Cleanup Timer: 90000 ms
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:114:   - Starting Refresh Timer: 37915 ms (Jittered)
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:122:   - Input Interface Index: 10
+[2026-06-15 17:02:56] [INFO] handle_path_message:168:   - Role: TRANSIT. NextHop: 10.0.0.4, OutIf: 5
+[2026-06-15 17:02:56] [INFO] handle_path_message:173:   - New Transit state, forwarding PATH downstream...
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 1 (Buffer Size: 1024)
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 5, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 19, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 207, C-Type: 7, DataLen: 4, Aligned: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 11, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 12, C-Type: 2, DataLen: 32, Aligned: 36]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 1, Length: 108, Checksum: 0x9b79]
+[2026-06-15 17:02:56] [INFO] send_path_downstream:749:   - Sending PATH downstream to 10.0.0.4 (Length: 108)
+[2026-06-15 17:02:56] [INFO] handle_path_message:65: Handling PATH: [TunnelID: 100, Dest: 10.0.0.4, Source: 10.0.0.1, PrevHop: 10.0.0.5]
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:78:   - Found existing PSB
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:88:   - Message TTL: 255
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:103:   - (Re)starting Cleanup Timer: 90000 ms
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:114:   - Starting Refresh Timer: 34793 ms (Jittered)
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:122:   - Input Interface Index: 10
+[2026-06-15 17:02:56] [INFO] handle_path_message:168:   - Role: TRANSIT. NextHop: 10.0.0.4, OutIf: 5
+[2026-06-15 17:02:56] [DEBUG] handle_path_message:176:   - Transit state refreshed
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 2 (Buffer Size: 256)
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 10, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 2, Length: 36, Checksum: 0xc6dd]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:12: Parser: Starting RSVP packet parsing (Length: 56)
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:35: Parser: RSVP Header [Ver: 1, Type: 2, Flags: 0x0, Length: 36, TTL: 255]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:81: Parser: Checksum OK
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 1, C-Type: 7, Length: 16]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:111:   - SESSION IPv4: Dest 10.0.0.4, TunnelID 100
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:92: Parser: Found Object [Class: 10, C-Type: 7, Length: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_parse_packet:150:   - SENDER/FILTER IPv4: Source 10.0.0.1, LSP-ID 100
+[2026-06-15 17:02:56] [WARN] rsvp_parse_packet:212: Parser: RESV missing mandatory HOP object
+[2026-06-15 17:02:56] [INFO] handle_resv_message:190: Handling RESV: [TunnelID: 100, Dest: 10.0.0.4, Source: 10.0.0.1, Label: 0, NextHop: N/A]
+[2026-06-15 17:02:56] [INFO] handle_resv_message:197:   - New RESV detected, creating RSB
+[2026-06-15 17:02:56] [DEBUG] rsvp_rsb_create:106: Creating RSB: Tunnel ID 100, Dest 10.0.0.4, Source 10.0.0.1
+[2026-06-15 17:02:56] [DEBUG] handle_resv_message:204:   - Associated RSB with existing PSB
+[2026-06-15 17:02:56] [DEBUG] handle_resv_message:222:   - RSB Message TTL: 255
+[2026-06-15 17:02:56] [DEBUG] handle_resv_message:227:   - (Re)starting RSB Cleanup Timer: 90000 ms
+[2026-06-15 17:02:56] [DEBUG] handle_resv_message:239:   - Starting RSB Upstream Refresh Timer: 35335 ms
+[2026-06-15 17:02:56] [DEBUG] handle_resv_message:265:   - Allocated Inbound Label: 1001
+[2026-06-15 17:02:56] [INFO] handle_resv_message:267:   - TRANSIT: Programming MPLS SWAP [1001 -> 0] via if 0
+[2026-06-15 17:02:56] [INFO] handle_resv_message:276:   - Forwarding RESV upstream to 10.0.0.5
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_init:8: Builder: Initializing for Message Type 2 (Buffer Size: 1024)
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 1, C-Type: 7, DataLen: 12, Aligned: 16]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 3, C-Type: 1, DataLen: 8, Aligned: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 5, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 8, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 9, C-Type: 2, DataLen: 32, Aligned: 36]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 10, C-Type: 7, DataLen: 8, Aligned: 12]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_add_obj:25: Builder: Adding Object [Class: 16, C-Type: 1, DataLen: 4, Aligned: 8]
+[2026-06-15 17:02:56] [DEBUG] rsvp_builder_finalize:214: Builder: Finalized message [Type: 2, Length: 108, Checksum: 0xe536]
+[2026-06-15 17:02:56] [INFO] send_resv_upstream:512:   - Sending RESV upstream to 10.0.0.5 (Length: 108)
+[2026-06-15 17:02:56] [INFO] handle_resv_message:190: Handling RESV: [TunnelID: 100, Dest: 10.0.0.4, Source: 10.0.0.1, Label: 0, NextHop: N/A]
+[2026-06-15 17:02:56] [DEBUG] handle_resv_message:212:   - Found existing RSB
+[2026-06-15 17:02:56] [DEBUG] handle_resv_message:222:   - RSB Message TTL: 255
+[2026-06-15 17:02:56] [DEBUG] handle_resv_message:227:   - (Re)starting RSB Cleanup Timer: 90000 ms
+[2026-06-15 17:02:56] [DEBUG] handle_resv_message:239:   - Starting RSB Upstream Refresh Timer: 38386 ms
+[2026-06-15 17:02:56] [DEBUG] handle_resv_message:294:   - RSB state refreshed (no label change)

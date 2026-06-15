@@ -23,6 +23,9 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
         return RSVP_ERR_INVALID_PARAM;
     }
 
+    info->src_ip.s_addr = ip->saddr;
+    info->dst_ip.s_addr = ip->daddr;
+
     if (len < ip_hdr_len + sizeof(struct rsvp_common_hdr)) {
         LOG_WARN("Parser: Packet too small for RSVP common header");
         return RSVP_ERR_BUFFER_TOO_SMALL;
@@ -209,11 +212,48 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
                 return RSVP_ERR_MALFORMED_OBJ;
             }
             if (!info->hop_v4 && !info->hop_v6) {
-                LOG_WARN("Parser: RESV missing mandatory HOP object");
+                LOG_WARN("Parser: RESV missing mandatory RSVP_HOP object");
+                return RSVP_ERR_MALFORMED_OBJ;
+            }
+            break;
+        case RSVP_MSG_PATHERR:
+            if (!info->sess_v4 && !info->sess_v6) {
+                LOG_WARN("Parser: PATHERR missing mandatory SESSION object");
+                return RSVP_ERR_MALFORMED_OBJ;
+            }
+            if (!info->error_spec) {
+                LOG_WARN("Parser: PATHERR missing mandatory ERROR_SPEC object");
+                return RSVP_ERR_MALFORMED_OBJ;
+            }
+            break;
+        case RSVP_MSG_RESVERR:
+            if (!info->sess_v4 && !info->sess_v6) {
+                LOG_WARN("Parser: RESVERR missing mandatory SESSION object");
+                return RSVP_ERR_MALFORMED_OBJ;
+            }
+            if (!info->error_spec) {
+                LOG_WARN("Parser: RESVERR missing mandatory ERROR_SPEC object");
+                return RSVP_ERR_MALFORMED_OBJ;
+            }
+            break;
+        case RSVP_MSG_PATHTEAR:
+            if (!info->sess_v4 && !info->sess_v6) {
+                LOG_WARN("Parser: PATHTEAR missing mandatory SESSION object");
+                return RSVP_ERR_MALFORMED_OBJ;
+            }
+            if (!info->sender_v4 && !info->sender_v6) {
+                LOG_WARN("Parser: PATHTEAR missing mandatory SENDER_TEMPLATE object");
+                return RSVP_ERR_MALFORMED_OBJ;
+            }
+            break;
+        case RSVP_MSG_RESVTEAR:
+            if (!info->sess_v4 && !info->sess_v6) {
+                LOG_WARN("Parser: RESVTEAR missing mandatory SESSION object");
                 return RSVP_ERR_MALFORMED_OBJ;
             }
             break;
         default:
+            LOG_DEBUG("Parser: Skipping validation for message type %d", info->common_hdr->msg_type);
             break;
     }
 

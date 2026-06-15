@@ -49,7 +49,10 @@ static void rsb_cleanup_timer_cb(void* arg);
 static void send_resv_upstream(struct rsvp_rsb* rsb);
 static void propagate_path_tear(struct rsvp_psb* psb);
 static void propagate_resv_tear(struct rsvp_rsb* rsb);
+static void propagate_resv_err(struct rsvp_rsb* rsb, struct rsvp_error_spec_ipv4* err_spec);
 static void send_path_downstream(struct rsvp_psb* psb);
+static void rsvp_psb_cleanup(struct rsvp_psb* psb, bool propagate);
+static void rsvp_rsb_cleanup(struct rsvp_rsb* rsb, bool propagate);
 
 static void handle_path_message(struct rsvp_message_info* info) {
     char dest_str[INET_ADDRSTRLEN], src_str[INET_ADDRSTRLEN], hop_str[INET_ADDRSTRLEN] = "N/A";
@@ -227,7 +230,6 @@ static void handle_resv_message(struct rsvp_message_info* info) {
         rsvp_timer_start(&rsb->cleanup_timer,
             RSVP_TIMER_CLEANUP, cleanup_ms, rsb_cleanup_timer_cb, rsb);
     }
-    rsb->refresh_count = 0;
 
     rsb->refresh_count = 0;
     /* Refresh Timer: Only for Transit and Egress nodes (upstream refresh) */
@@ -294,81 +296,53 @@ static void handle_resv_message(struct rsvp_message_info* info) {
 }
 
 static void handle_path_tear(struct rsvp_message_info* info) {
-    char dest_str[INET_ADDRSTRLEN], src_str[INET_ADDRSTRLEN];
+    char dest_str[INET_ADDRSTRLEN], src_str[INET_ADDRSTRLEN], sender_str[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &info->key.session.dest_addr, dest_str, sizeof(dest_str));
     inet_ntop(AF_INET, &info->key.sender.source_addr, src_str, sizeof(src_str));
+    inet_ntop(AF_INET, &info->src_ip, sender_str, sizeof(sender_str));
 
-    LOG_INFO("Handling PathTear: [TunnelID: %d, Dest: %s, Source: %s]",
-             ntohs(info->key.session.tunnel_id), dest_str, src_str);
+    LOG_INFO("Handling PathTear from %s: [TunnelID: %d, Dest: %s, Source: %s]",
+             sender_str, ntohs(info->key.session.tunnel_id), dest_str, src_str);
 
     struct rsvp_psb* psb = rsvp_psb_find(&info->key);
     if (psb) {
-        LOG_INFO("  - Found PSB, propagating PathTear downstream...");
-        propagate_path_tear(psb);
-
-        /* If associated RSB exists, it should also be torn down or notified */
-        if (psb->associated_rsb) {
-            LOG_DEBUG("  - Tearing down associated RSB");
-            rsvp_timer_stop(&psb->associated_rsb->refresh_timer);
-            rsvp_timer_stop(&psb->associated_rsb->cleanup_timer);
-            rsvp_rsb_delete(psb->associated_rsb);
-        }
-
-        rsvp_timer_stop(&psb->refresh_timer);
-        rsvp_timer_stop(&psb->cleanup_timer);
-        rsvp_psb_delete(psb);
-        LOG_INFO("  - PSB deleted.");
+        rsvp_psb_cleanup(psb, true);
     } else {
-        LOG_WARN("  - No matching PSB found for PathTear, ignoring.");
+        LOG_WARN("  - No matching PSB found for PathTear (from %s), ignoring.", sender_str);
     }
 }
 
 static void handle_resv_tear(struct rsvp_message_info* info) {
-    char dest_str[INET_ADDRSTRLEN], src_str[INET_ADDRSTRLEN];
+    char dest_str[INET_ADDRSTRLEN], src_str[INET_ADDRSTRLEN], sender_str[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &info->key.session.dest_addr, dest_str, sizeof(dest_str));
     inet_ntop(AF_INET, &info->key.sender.source_addr, src_str, sizeof(src_str));
+    inet_ntop(AF_INET, &info->src_ip, sender_str, sizeof(sender_str));
 
-    LOG_INFO("Handling ResvTear: [TunnelID: %d, Dest: %s, Source: %s]",
-             ntohs(info->key.session.tunnel_id), dest_str, src_str);
+    LOG_INFO("Handling ResvTear from %s: [TunnelID: %d, Dest: %s, Source: %s]",
+             sender_str, ntohs(info->key.session.tunnel_id), dest_str, src_str);
 
     struct rsvp_rsb* rsb = rsvp_rsb_find(&info->key);
     if (rsb) {
-        LOG_INFO("  - Found RSB, propagating ResvTear upstream...");
-        propagate_resv_tear(rsb);
-
-        if (rsb->label_in != 0) {
-            LOG_DEBUG("  - Removing MPLS entry for Label %u", rsb->label_in);
-            hal_mpls_remove(rsb->label_in);
-            label_mgr_free(rsb->label_in);
-        } else {
-            /* Ingress */
-            LOG_DEBUG("  - Removing Ingress MPLS entry");
-            hal_mpls_remove(0);
-        }
-
-        if (rsb->associated_psb) {
-            rsb->associated_psb->associated_rsb = NULL;
-        }
-
-        rsvp_timer_stop(&rsb->refresh_timer);
-        rsvp_timer_stop(&rsb->cleanup_timer);
-        rsvp_rsb_delete(rsb);
-        LOG_INFO("  - RSB deleted.");
+        rsvp_rsb_cleanup(rsb, true);
     } else {
-        LOG_WARN("  - No matching RSB found for ResvTear, ignoring.");
+        LOG_WARN("  - No matching RSB found for ResvTear (from %s), ignoring.", sender_str);
     }
 }
 
 static void handle_path_err(struct rsvp_message_info* info) {
-    char dest_str[INET_ADDRSTRLEN], src_str[INET_ADDRSTRLEN], node_str[INET_ADDRSTRLEN] = "N/A";
+    char dest_str[INET_ADDRSTRLEN], src_str[INET_ADDRSTRLEN], node_str[INET_ADDRSTRLEN] = "N/A", sender_str[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &info->key.session.dest_addr, dest_str, sizeof(dest_str));
     inet_ntop(AF_INET, &info->key.sender.source_addr, src_str, sizeof(src_str));
+    inet_ntop(AF_INET, &info->src_ip, sender_str, sizeof(sender_str));
 
     if (info->error_spec) {
         inet_ntop(AF_INET, &info->error_spec->error_node, node_str, sizeof(node_str));
-        LOG_INFO("Handling PathErr: [TunnelID: %d, Dest: %s, Source: %s] Code: %d, Val: %d, Node: %s",
-                 ntohs(info->key.session.tunnel_id), dest_str, src_str,
+        LOG_INFO("Handling PathErr from %s: [TunnelID: %d, Dest: %s, Source: %s] Code: %d, Val: %d, Node: %s",
+                 sender_str, ntohs(info->key.session.tunnel_id), dest_str, src_str,
                  info->error_spec->error_code, info->error_spec->error_value, node_str);
+    } else {
+        LOG_WARN("Handling PathErr from %s: [TunnelID: %d, Dest: %s, Source: %s] MISSING ERROR_SPEC",
+                 sender_str, ntohs(info->key.session.tunnel_id), dest_str, src_str);
     }
 
     struct rsvp_psb* psb = rsvp_psb_find(&info->key);
@@ -376,41 +350,80 @@ static void handle_path_err(struct rsvp_message_info* info) {
         char prev_str[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &psb->prev_hop.neighbor_addr, prev_str, sizeof(prev_str));
         LOG_INFO("  - Propagating PathErr upstream to %s...", prev_str);
+        
         struct in_addr prev_addr = psb->prev_hop.neighbor_addr;
         struct in_addr local_addr = {0};
         struct in_addr dummy;
         int out_ifindex = hal_netlink_get_egress_if(&prev_addr, &dummy);
         if (out_ifindex >= 0) {
             hal_netlink_get_local_addr(out_ifindex, &local_addr);
+        } else {
+            local_addr = psb->key.session.dest_addr; /* Fallback */
         }
 
-        if (info->common_hdr->ttl > 0) {
-            info->common_hdr->ttl--;
+        /* Rebuild message to ensure correct HOP object and checksum */
+        uint8_t buf[1024];
+        struct rsvp_builder b;
+        rsvp_builder_init(&b, buf, sizeof(buf), RSVP_MSG_PATHERR);
+        
+        /* Set TTL */
+        b.hdr->ttl = (info->common_hdr->ttl > 0) ? info->common_hdr->ttl - 1 : 255;
+
+        struct in_addr dest_addr_cpy = psb->key.session.dest_addr;
+        struct in_addr ext_dest_cpy = psb->key.session.extended_tunnel_id;
+        rsvp_builder_add_session_ipv4(&b, &dest_addr_cpy, 
+                                      ntohs(psb->key.session.tunnel_id),
+                                      &ext_dest_cpy);
+        
+        rsvp_builder_add_hop_ipv4(&b, &local_addr, 
+                                  out_ifindex >= 0 ? (uint32_t)out_ifindex : psb->ifindex_in);
+        
+        if (info->error_spec) {
+            rsvp_builder_add_obj(&b, RSVP_CLASS_ERROR_SPEC, 1, info->error_spec, sizeof(*info->error_spec));
         }
-        info->common_hdr->checksum = 0;
-        info->common_hdr->checksum =
-            rsvp_checksum(info->common_hdr, ntohs(info->common_hdr->length));
-        rsvp_send_packet(&local_addr, &prev_addr, (uint8_t*)info->common_hdr,
-                         ntohs(info->common_hdr->length), false);
+
+        /* SENDER_TEMPLATE */
+        rsvp_builder_add_obj(&b, RSVP_CLASS_SENDER_TEMPLATE, 7, &psb->key.sender, sizeof(psb->key.sender));
+
+        size_t len = rsvp_builder_finalize(&b);
+        if (rsvp_send_packet(&local_addr, &prev_addr, buf, len, false) < 0) {
+            LOG_ERROR("  - Failed to send PathErr upstream to %s", prev_str);
+        }
     } else {
-        LOG_DEBUG("  - PathErr reached Ingress or no PSB found, stopping propagation.");
+        LOG_INFO("  - PathErr reached Ingress (Head-end) or no PSB found. Error processing complete.");
     }
 }
 
 static void handle_resv_err(struct rsvp_message_info* info) {
-    char dest_str[INET_ADDRSTRLEN], src_str[INET_ADDRSTRLEN], node_str[INET_ADDRSTRLEN] = "N/A";
+    char dest_str[INET_ADDRSTRLEN], src_str[INET_ADDRSTRLEN], node_str[INET_ADDRSTRLEN] = "N/A", sender_str[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &info->key.session.dest_addr, dest_str, sizeof(dest_str));
     inet_ntop(AF_INET, &info->key.sender.source_addr, src_str, sizeof(src_str));
+    inet_ntop(AF_INET, &info->src_ip, sender_str, sizeof(sender_str));
 
     if (info->error_spec) {
         inet_ntop(AF_INET, &info->error_spec->error_node, node_str, sizeof(node_str));
-        LOG_INFO("Handling ResvErr: [TunnelID: %d, Dest: %s, Source: %s] Code: %d, Val: %d, Node: %s",
-                 ntohs(info->key.session.tunnel_id), dest_str, src_str,
+        LOG_INFO("Handling ResvErr from %s: [TunnelID: %d, Dest: %s, Source: %s] Code: %d, Val: %d, Node: %s",
+                 sender_str, ntohs(info->key.session.tunnel_id), dest_str, src_str,
                  info->error_spec->error_code, info->error_spec->error_value, node_str);
+    } else {
+        LOG_WARN("Handling ResvErr from %s: [TunnelID: %d, Dest: %s, Source: %s] MISSING ERROR_SPEC",
+                 sender_str, ntohs(info->key.session.tunnel_id), dest_str, src_str);
     }
 
-    /* ResvErr propagates downstream toward the egress */
-    LOG_INFO("  - Propagating ResvErr downstream...");
+    struct rsvp_rsb* rsb = rsvp_rsb_find(&info->key);
+    if (rsb) {
+        /* Check if we are Egress */
+        struct in_addr dest_addr_cpy = info->key.session.dest_addr;
+        if (hal_netlink_is_local_addr(&dest_addr_cpy)) {
+            LOG_INFO("  - ResvErr reached Egress (Tail-end). Error processing complete.");
+            return;
+        }
+
+        LOG_INFO("  - Propagating ResvErr downstream...");
+        propagate_resv_err(rsb, info->error_spec);
+    } else {
+        LOG_WARN("  - No matching RSB found for ResvErr (from %s), ignoring.", sender_str);
+    }
 }
 
 void rsvp_handle_message(struct rsvp_message_info* info) {
@@ -525,25 +538,137 @@ static void propagate_path_tear(struct rsvp_psb* psb) {
     inet_ntop(AF_INET, &dest_addr, dest_str, sizeof(dest_str));
 
     if (out_ifindex < 0) {
-        LOG_WARN("Propagate PathTear: no route to dest %s", dest_str);
+        LOG_WARN("Propagate PathTear: no route to dest %s, cannot propagate", dest_str);
         return;
     }
 
     uint8_t buf[1024];
     struct rsvp_builder b;
     rsvp_builder_init(&b, buf, sizeof(buf), RSVP_MSG_PATHTEAR);
+    
+    /* Set TTL */
+    b.hdr->ttl = (psb->ttl > 0) ? psb->ttl - 1 : 255;
+
     rsvp_builder_add_session_ipv4(&b, &dest_addr, ntohs(session.tunnel_id),
                                   &ext_dest);
 
     struct in_addr local_addr = {0};
-    if (hal_netlink_get_local_addr(out_ifindex, &local_addr) == 0) {
-        rsvp_builder_add_hop_ipv4(&b, &local_addr, out_ifindex);
+    if (hal_netlink_get_local_addr(out_ifindex, &local_addr) < 0) {
+        local_addr = psb->key.sender.source_addr;
     }
-    size_t len = rsvp_builder_finalize(&b);
-    struct in_addr src_ip = psb->key.sender.source_addr;
+    rsvp_builder_add_hop_ipv4(&b, &local_addr, out_ifindex);
+
+    /* SENDER_TEMPLATE - Mandatory per RFC 2205 */
+    rsvp_builder_add_obj(&b, RSVP_CLASS_SENDER_TEMPLATE, 7, &psb->key.sender,
+                         sizeof(psb->key.sender));
     
+    size_t len = rsvp_builder_finalize(&b);
     LOG_INFO("  - Sending PathTear downstream to %s (Length: %zu)", dest_str, len);
-    rsvp_send_packet(&src_ip, &dest_addr, buf, len, true);
+    if (rsvp_send_packet(&local_addr, &dest_addr, buf, len, true) < 0) {
+        LOG_ERROR("  - Failed to send PathTear downstream to %s", dest_str);
+    }
+}
+
+static void propagate_resv_err(struct rsvp_rsb* rsb, struct rsvp_error_spec_ipv4* err_spec) {
+    if (!rsb->associated_psb) {
+        LOG_WARN("propagate_resv_err: No associated PSB found!");
+        return;
+    }
+
+    struct rsvp_psb* psb = rsb->associated_psb;
+    struct in_addr dest_addr = psb->key.session.dest_addr;
+    struct in_addr next_hop = {0};
+    int out_ifindex = hal_netlink_get_egress_if(&dest_addr, &next_hop);
+
+    if (out_ifindex < 0) {
+        LOG_WARN("propagate_resv_err: No route to dest for ResvErr");
+        return;
+    }
+
+    uint8_t buf[1024];
+    struct rsvp_builder b;
+    rsvp_builder_init(&b, buf, sizeof(buf), RSVP_MSG_RESVERR);
+    
+    struct in_addr ext_dest = psb->key.session.extended_tunnel_id;
+    rsvp_builder_add_session_ipv4(&b, &dest_addr, ntohs(psb->key.session.tunnel_id),
+                                  &ext_dest);
+
+    struct in_addr local_addr = {0};
+    hal_netlink_get_local_addr(out_ifindex, &local_addr);
+    rsvp_builder_add_hop_ipv4(&b, &local_addr, out_ifindex);
+    
+    if (err_spec) {
+        rsvp_builder_add_obj(&b, RSVP_CLASS_ERROR_SPEC, 1, err_spec, sizeof(*err_spec));
+    }
+
+    /* STYLE object - required in ResvErr */
+    rsvp_builder_add_style(&b, RSVP_STYLE_FF);
+
+    /* FILTER_SPEC */
+    rsvp_builder_add_obj(&b, RSVP_CLASS_FILTER_SPEC, 7, &psb->key.sender, sizeof(psb->key.sender));
+
+    size_t len = rsvp_builder_finalize(&b);
+    LOG_INFO("  - Propagating ResvErr downstream towards %s", inet_ntoa(dest_addr));
+    rsvp_send_packet(&local_addr, &dest_addr, buf, len, false);
+}
+
+static void rsb_cleanup_resources(struct rsvp_rsb* rsb) {
+    if (!rsb) return;
+
+    bool is_ingress = (rsb->associated_psb && rsb->associated_psb->is_ingress);
+
+    if (rsb->label_in != 0) {
+        LOG_DEBUG("  - Removing MPLS entry for Label %u", rsb->label_in);
+        hal_mpls_install(rsb->label_in, 0, 0, NULL); /* Ensure it's removed in HAL if remove not enough */
+        hal_mpls_remove(rsb->label_in);
+        label_mgr_free(rsb->label_in);
+        rsb->label_in = 0;
+    } else if (is_ingress) {
+        LOG_DEBUG("  - Removing Ingress MPLS entry");
+        hal_mpls_remove(0);
+    }
+
+    rsvp_timer_stop(&rsb->refresh_timer);
+    rsvp_timer_stop(&rsb->cleanup_timer);
+}
+
+static void rsvp_rsb_cleanup(struct rsvp_rsb* rsb, bool propagate) {
+    if (!rsb) return;
+
+    if (propagate) {
+        bool is_ingress = (rsb->associated_psb && rsb->associated_psb->is_ingress);
+        if (!is_ingress) {
+            propagate_resv_tear(rsb);
+        }
+    }
+
+    rsb_cleanup_resources(rsb);
+
+    if (rsb->associated_psb) {
+        rsb->associated_psb->associated_rsb = NULL;
+    }
+
+    rsvp_rsb_delete(rsb);
+}
+
+static void rsvp_psb_cleanup(struct rsvp_psb* psb, bool propagate) {
+    if (!psb) return;
+
+    if (propagate) {
+        struct in_addr dest_addr = psb->key.session.dest_addr;
+        bool is_egress = hal_netlink_is_local_addr(&dest_addr);
+        if (!is_egress) {
+            propagate_path_tear(psb);
+        }
+    }
+
+    if (psb->associated_rsb) {
+        rsvp_rsb_cleanup(psb->associated_rsb, false); /* RSB cleanup usually doesn't propagate if PSB is gone */
+    }
+
+    rsvp_timer_stop(&psb->refresh_timer);
+    rsvp_timer_stop(&psb->cleanup_timer);
+    rsvp_psb_delete(psb);
 }
 
 static void propagate_resv_tear(struct rsvp_rsb* rsb) {
@@ -576,6 +701,14 @@ static void propagate_resv_tear(struct rsvp_rsb* rsb) {
     rsvp_builder_add_hop_ipv4(&b, &prev_neighbor,
                               ntohl(prev_hop.logical_interface));
     rsvp_builder_add_time_values(&b, rsb->refresh_ms);
+
+    /* STYLE object - required for flow descriptor list */
+    rsvp_builder_add_style(&b, RSVP_STYLE_FF);
+
+    /* FILTER_SPEC uses C-Type 7 for IPv4 LSP */
+    rsvp_builder_add_obj(&b, RSVP_CLASS_FILTER_SPEC, 7, &psb->key.sender,
+                         sizeof(psb->key.sender));
+
     size_t len = rsvp_builder_finalize(&b);
 
     struct in_addr local_addr = {0};
@@ -584,7 +717,9 @@ static void propagate_resv_tear(struct rsvp_rsb* rsb) {
     if (ifindex >= 0) {
         hal_netlink_get_local_addr(ifindex, &local_addr);
     }
-    rsvp_send_packet(&local_addr, &prev_neighbor, buf, len, false);
+    if (rsvp_send_packet(&local_addr, &prev_neighbor, buf, len, false) < 0) {
+        LOG_ERROR("  - Failed to send ResvTear upstream to %s", prev_str);
+    }
 }
 
 static void send_path_downstream(struct rsvp_psb* psb) {
@@ -701,14 +836,7 @@ static void psb_refresh_timer_cb(void* arg) {
             LOG_DEBUG("  - Transit PSB Refresh Count: %u", psb->refresh_count);
             if (psb->refresh_count > 2) {
                 LOG_WARN("  - PSB missed %u refreshes, tearing down state", psb->refresh_count);
-                propagate_path_tear(psb);
-                rsvp_timer_stop(&psb->cleanup_timer);
-                if (psb->associated_rsb) {
-                    rsvp_timer_stop(&psb->associated_rsb->refresh_timer);
-                    rsvp_timer_stop(&psb->associated_rsb->cleanup_timer);
-                    rsvp_rsb_delete(psb->associated_rsb);
-                }
-                rsvp_psb_delete(psb);
+                rsvp_psb_cleanup(psb, true);
                 return;
             }
         }
@@ -726,15 +854,7 @@ static void psb_cleanup_timer_cb(void* arg) {
     struct rsvp_psb* psb = (struct rsvp_psb*)arg;
     LOG_WARN("PSB Cleanup Timer Expired [Tunnel: %d]: Tearing down state",
              ntohs(psb->key.session.tunnel_id));
-    propagate_path_tear(psb);
-
-    rsvp_timer_stop(&psb->refresh_timer);
-    if (psb->associated_rsb) {
-        rsvp_timer_stop(&psb->associated_rsb->refresh_timer);
-        rsvp_timer_stop(&psb->associated_rsb->cleanup_timer);
-        rsvp_rsb_delete(psb->associated_rsb);
-    }
-    rsvp_psb_delete(psb);
+    rsvp_psb_cleanup(psb, true);
 }
 
 static void rsb_refresh_timer_cb(void* arg) {
@@ -760,14 +880,7 @@ static void rsb_refresh_timer_cb(void* arg) {
             LOG_DEBUG("  - Transit RSB Refresh Count: %u", rsb->refresh_count);
             if (rsb->refresh_count > 2) {
                 LOG_WARN("  - RSB missed %u refreshes from downstream, tearing down state", rsb->refresh_count);
-                propagate_resv_tear(rsb);
-                rsvp_timer_stop(&rsb->cleanup_timer);
-                if (rsb->associated_psb) rsb->associated_psb->associated_rsb = NULL;
-                if (rsb->label_in != 0) {
-                    hal_mpls_remove(rsb->label_in);
-                    label_mgr_free(rsb->label_in);
-                }
-                rsvp_rsb_delete(rsb);
+                rsvp_rsb_cleanup(rsb, true);
                 return;
             }
         }
@@ -786,16 +899,5 @@ static void rsb_cleanup_timer_cb(void* arg) {
     struct rsvp_rsb* rsb = (struct rsvp_rsb*)arg;
     LOG_WARN("RSB Cleanup Timer Expired [Tunnel: %d]: Tearing down state",
              ntohs(rsb->key.session.tunnel_id));
-    propagate_resv_tear(rsb);
-
-    rsvp_timer_stop(&rsb->refresh_timer);
-    if (rsb->associated_psb) rsb->associated_psb->associated_rsb = NULL;
-    if (rsb->label_in != 0) {
-        LOG_DEBUG("  - Freeing label_in: %u", rsb->label_in);
-        hal_mpls_remove(rsb->label_in);
-        label_mgr_free(rsb->label_in);
-    } else {
-        hal_mpls_remove(0);
-    }
-    rsvp_rsb_delete(rsb);
+    rsvp_rsb_cleanup(rsb, true);
 }

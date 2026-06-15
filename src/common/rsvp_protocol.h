@@ -169,6 +169,24 @@ struct rsvp_label_ipv4 {
     uint32_t label; /* 20 bits label, 3 bits EXP, 1 bit S, 8 bits TTL */
 } __attribute__((packed));
 
+/* RSVP Error Codes (RFC 2205) */
+#define RSVP_ERR_NONE 0
+#define RSVP_ERR_ADMISSION_CONTROL 1
+#define RSVP_ERR_POLICY_CONTROL 2
+#define RSVP_ERR_NO_PATH_STATE 3
+#define RSVP_ERR_NO_RESV_STATE 4
+#define RSVP_ERR_CONF_PREEMPT 5
+#define RSVP_ERR_UNKNOWN_CLASS 6
+#define RSVP_ERR_UNKNOWN_C_TYPE 7
+#define RSVP_ERR_ADMISSION_CONTROL_FAILURE 11
+#define RSVP_ERR_TRAFFIC_CONTROL_ERROR 12
+#define RSVP_ERR_UNKNOWN_OBJECT_CLASS 13
+#define RSVP_ERR_UNKNOWN_OBJECT_C_TYPE 14
+#define RSVP_ERR_API_ERROR 20
+#define RSVP_ERR_TRAFFIC_CONTROL_SYSTEM_ERROR 21
+#define RSVP_ERR_RSVP_SYSTEM_ERROR 22
+#define RSVP_ERR_ROUTING_PROBLEM 24
+
 /* SESSION_ATTRIBUTE Object (RFC 3209) */
 /* C-Type 7: LSP_TUNNEL_IPv4 */
 struct rsvp_session_attribute {

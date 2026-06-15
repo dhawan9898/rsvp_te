@@ -10,7 +10,8 @@ typedef enum {
     RSVP_ERR_TIMEOUT = -5,
     RSVP_ERR_SYS = -6,
     RSVP_ERR_BUFFER_TOO_SMALL = -7,
-    RSVP_ERR_CHECKSUM = -8
+    RSVP_ERR_CHECKSUM = -8,
+    RSVP_ERR_SEND_FAILED = -9
 } rsvp_error_t;
 
 #endif /* RSVP_ERROR_H */

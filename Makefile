@@ -29,6 +29,6 @@ $(TEST_TARGET): $(TEST_OBJ)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) $(TEST_OBJ) $(TARGET) $(TEST_TARGET)
+	rm -f $(OBJ) $(TEST_OBJ) $(TARGET) $(TEST_TARGET) test_rsvp.o
 
 .PHONY: all clean

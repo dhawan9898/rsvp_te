@@ -131,10 +131,11 @@ void rsvp_dispatcher_run(void) {
                             }
                         }
                         memset(&info, 0, sizeof(info));
-                        if (rsvp_parse_packet(buffer, bytes_read, &info) == RSVP_SUCCESS) {
+                        rsvp_error_t err = rsvp_parse_packet(buffer, bytes_read, &info);
+                        if (err == RSVP_SUCCESS) {
                             rsvp_handle_message(&info);
                         } else {
-                            LOG_WARN("Dispatcher: Failed to parse RSVP packet from %s", src_str);
+                            LOG_WARN("Dispatcher: Failed to parse RSVP packet from %s (Error: %d)", src_str, err);
                         }
                     } else if (bytes_read < 0 && errno != EINTR) {
                         LOG_ERROR("recvfrom: %s", strerror(errno));
@@ -150,7 +151,7 @@ void rsvp_dispatcher_run(void) {
     }
 }
 
-int rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t* buffer,
+rsvp_error_t rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t* buffer,
                      size_t len, bool use_rao) {
     uint8_t packet[MAX_RSVP_PACKET_SIZE];
     struct iphdr* iph = (struct iphdr*)packet;
@@ -160,10 +161,10 @@ int rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t* buffer,
 
     if (total_len > MAX_RSVP_PACKET_SIZE) {
         LOG_ERROR("Packet too large: %zu", total_len);
-        return -1;
+        return RSVP_ERR_BUFFER_TOO_SMALL;
     }
 
-    if (rsvp_raw_sock < 0) return -1;
+    if (rsvp_raw_sock < 0) return RSVP_ERR_SYS;
 
     memset(packet, 0, total_len);
 
@@ -202,8 +203,8 @@ int rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t* buffer,
                (struct sockaddr*)&dest_addr, sizeof(dest_addr));
 
     if (bytes_sent < 0) {
-        LOG_ERROR("sendto error: %s", strerror(errno));
-        return -1;
+        LOG_ERROR("sendto to %s error: %s", inet_ntoa(*dest), strerror(errno));
+        return RSVP_ERR_SEND_FAILED;
     }
 
     char dest_str[INET_ADDRSTRLEN];
@@ -213,5 +214,5 @@ int rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t* buffer,
 
     LOG_INFO("Sent %zd bytes to %s from %s (Type: %d, TTL: %d, RAO: %s)", 
              bytes_sent, dest_str, src_str, rsvp_hdr->msg_type, iph->ttl, use_rao ? "on" : "off");
-    return 0;
+    return RSVP_SUCCESS;
 }

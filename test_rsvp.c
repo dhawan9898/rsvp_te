@@ -36,7 +36,7 @@ bool hal_netlink_is_local_addr(struct in_addr* addr) {
 int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex,
                      struct in_addr* next_hop) {
     printf("[TEST] MPLS Install: in=%u, out=%u, if=%d, next=%s\n", in_label,
-           out_label, out_ifindex, inet_ntoa(*next_hop));
+           out_label, out_ifindex, next_hop ? inet_ntoa(*next_hop) : "NULL");
     return 0;
 }
 
@@ -56,7 +56,7 @@ void hal_timer_clear(void) {}
 static uint8_t captured_packet[2048];
 static size_t captured_len = 0;
 
-int rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t* buffer,
+rsvp_error_t rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t* buffer,
                      size_t len, bool use_rao) {
     char src_str[INET_ADDRSTRLEN];
     char dest_str[INET_ADDRSTRLEN];
@@ -66,7 +66,7 @@ int rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t* buffer,
            dest_str, src_str, len, use_rao ? "on" : "off");
     memcpy(captured_packet, buffer, len);
     captured_len = len;
-    return 0;
+    return RSVP_SUCCESS;
 }
 
 int main() {
@@ -214,6 +214,75 @@ int main() {
                 printf("SUCCESS: Did NOT send redundant RESV (Backup Timer mode)\n");
             } else {
                 printf("FAILURE: Sent redundant RESV for existing RSB\n");
+            }
+
+            /* --- Tear Message Handling Verification --- */
+            printf("\n--- Test: Tear Message Handling ---\n");
+            
+            /* Test PathTear */
+            printf("Processing PathTear for Tunnel 100...\n");
+            uint8_t tear_buf[256];
+            struct rsvp_builder tb;
+            rsvp_builder_init(&tb, tear_buf, sizeof(tear_buf), RSVP_MSG_PATHTEAR);
+            rsvp_builder_add_session_ipv4(&tb, &t_dest, 100, &t_dest);
+            rsvp_builder_add_hop_ipv4(&tb, &t_src, 1);
+            rsvp_builder_add_obj(&tb, RSVP_CLASS_SENDER_TEMPLATE, 7, &t_sender, sizeof(t_sender));
+            size_t tear_len = rsvp_builder_finalize(&tb);
+
+            uint8_t tear_pkt_with_ip[256];
+            struct iphdr* tear_ip = (struct iphdr*)tear_pkt_with_ip;
+            memset(tear_ip, 0, 20);
+            tear_ip->ihl = 5;
+            tear_ip->saddr = t_src.s_addr;
+            tear_ip->daddr = t_dest.s_addr;
+            memcpy(tear_pkt_with_ip + 20, tear_buf, tear_len);
+
+            struct rsvp_message_info tear_info;
+            memset(&tear_info, 0, sizeof(tear_info));
+            rsvp_parse_packet(tear_pkt_with_ip, tear_len + 20, &tear_info);
+            
+            struct rsvp_psb* psb_to_tear = rsvp_psb_find(&path_info.key);
+            if (psb_to_tear) {
+                printf("  - PSB exists before PathTear\n");
+                rsvp_handle_message(&tear_info);
+                if (rsvp_psb_find(&path_info.key) == NULL) {
+                    printf("  - SUCCESS: PSB cleaned up after PathTear\n");
+                } else {
+                    printf("  - FAILURE: PSB still exists after PathTear\n");
+                }
+            } else {
+                printf("  - FAILURE: PSB not found before PathTear\n");
+            }
+
+            /* Test ResvTear */
+            printf("\nProcessing ResvTear for Tunnel 100...\n");
+            
+            /* Re-create PSB and RSB for ResvTear test */
+            rsvp_handle_message(&path_info);
+            rsvp_handle_message(&resv_info_2);
+
+            rsvp_builder_init(&tb, tear_buf, sizeof(tear_buf), RSVP_MSG_RESVTEAR);
+            rsvp_builder_add_session_ipv4(&tb, &t_dest, 100, &t_dest);
+            rsvp_builder_add_hop_ipv4(&tb, &t_src, 1);
+            rsvp_builder_add_style(&tb, RSVP_STYLE_FF);
+            rsvp_builder_add_obj(&tb, RSVP_CLASS_FILTER_SPEC, 7, &t_sender, sizeof(t_sender));
+            tear_len = rsvp_builder_finalize(&tb);
+
+            memcpy(tear_pkt_with_ip + 20, tear_buf, tear_len);
+            memset(&tear_info, 0, sizeof(tear_info));
+            rsvp_parse_packet(tear_pkt_with_ip, tear_len + 20, &tear_info);
+
+            struct rsvp_rsb* rsb_to_tear = rsvp_rsb_find(&resv_info_2.key);
+            if (rsb_to_tear) {
+                printf("  - RSB exists before ResvTear\n");
+                rsvp_handle_message(&tear_info);
+                if (rsvp_rsb_find(&resv_info_2.key) == NULL) {
+                    printf("  - SUCCESS: RSB cleaned up after ResvTear\n");
+                } else {
+                    printf("  - FAILURE: RSB still exists after ResvTear\n");
+                }
+            } else {
+                printf("  - FAILURE: RSB not found before ResvTear\n");
             }
 
         } else {
