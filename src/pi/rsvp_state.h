@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 #include "rsvp_protocol.h"
+#include "rsvp_timers.h"
 
 /* Forward declarations */
 struct rsvp_psb;
@@ -30,8 +31,8 @@ struct rsvp_psb {
     char* lsp_name;
 
     /* State Management */
-    uint32_t cleanup_timer_id;
-    uint32_t refresh_timer_id;
+    rsvp_timer_t cleanup_timer;
+    rsvp_timer_t refresh_timer;
     uint32_t refresh_ms;
     uint8_t ttl;
     uint8_t refresh_count;
@@ -55,8 +56,8 @@ struct rsvp_rsb {
     uint32_t label_out; /* Label from downstream */
 
     /* State Management */
-    uint32_t cleanup_timer_id;
-    uint32_t refresh_timer_id;
+    rsvp_timer_t cleanup_timer;
+    rsvp_timer_t refresh_timer;
     uint32_t refresh_ms;
     uint8_t ttl;
     uint8_t refresh_count;

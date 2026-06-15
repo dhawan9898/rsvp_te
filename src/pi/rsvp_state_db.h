@@ -22,4 +22,7 @@ struct rsvp_rsb* rsvp_rsb_find(struct rsvp_path_key* key);
 struct rsvp_rsb* rsvp_rsb_create(struct rsvp_path_key* key);
 void rsvp_rsb_delete(struct rsvp_rsb* rsb);
 
+void rsvp_psb_dump(void);
+void rsvp_rsb_dump(void);
+
 #endif /* RSVP_STATE_DB_H */

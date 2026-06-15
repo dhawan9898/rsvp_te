@@ -9,12 +9,14 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <stdio.h>
 
 #include "common/rsvp_log.h"
 #include "hal/hal_netlink.h"
 #include "pi/rsvp_timers.h"
 #include "rsvp_parser.h"
 #include "rsvp_state_machine.h"
+#include "rsvp_cli.h"
 
 #define RSVP_PROTOCOL 46
 #define MAX_RSVP_PACKET_SIZE 4096
@@ -58,8 +60,16 @@ void rsvp_dispatcher_run(void) {
 
     if (rsvp_raw_sock < 0) return;
 
+    printf("rsvp-te> ");
+    fflush(stdout);
+
     while (1) {
         nfds = 0;
+
+        /* STDIN for CLI */
+        fds[nfds].fd = STDIN_FILENO;
+        fds[nfds].events = POLLIN;
+        nfds++;
 
         /* Raw RSVP Socket */
         fds[nfds].fd = rsvp_raw_sock;
@@ -94,7 +104,9 @@ void rsvp_dispatcher_run(void) {
             }
 
             if (fds[i].revents & POLLIN) {
-                if (fds[i].fd == rsvp_raw_sock) {
+                if (fds[i].fd == STDIN_FILENO) {
+                    rsvp_cli_handle_input(STDIN_FILENO);
+                } else if (fds[i].fd == rsvp_raw_sock) {
                     uint8_t buffer[MAX_RSVP_PACKET_SIZE];
                     struct sockaddr_in src_addr;
                     socklen_t addr_len = sizeof(src_addr);

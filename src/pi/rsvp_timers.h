@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "wheel_timer.h"
 
 /**
  * Timer types for RSVP.
@@ -18,27 +19,36 @@ typedef enum {
 typedef void (*rsvp_timer_cb)(void* arg);
 
 /**
+ * Embedded Timer Structure
+ */
+typedef struct {
+    timer_node_t node;
+    rsvp_timer_type_t type;
+    rsvp_timer_cb cb;
+    void* arg;
+    bool active;
+} rsvp_timer_t;
+
+/**
  * Initialize the timer management system.
  */
 void rsvp_timer_init(void);
 
 /**
  * Start a timer.
- * Returns a unique timer ID.
  */
-uint32_t rsvp_timer_start(rsvp_timer_type_t type, uint32_t timeout_ms,
-                          rsvp_timer_cb cb, void* arg);
+void rsvp_timer_start(rsvp_timer_t* timer, rsvp_timer_type_t type, uint32_t timeout_ms, rsvp_timer_cb cb, void* arg);
 
 /**
- * Stop a timer by ID.
+ * Stop a timer.
  */
-void rsvp_timer_stop(uint32_t timer_id);
+void rsvp_timer_stop(rsvp_timer_t* timer);
 
 /**
  * Reset/Restart an existing timer.
- * Returns true if successful, false if the timer ID was not found.
+ * Returns true if successful.
  */
-bool rsvp_timer_reset(uint32_t timer_id, uint32_t timeout_ms);
+bool rsvp_timer_reset(rsvp_timer_t* timer, uint32_t timeout_ms);
 
 /**
  * Get all active timer file descriptors for polling.

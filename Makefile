@@ -1,15 +1,15 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -I./src -I./src/common -I./src/pi
-LDFLAGS = 
+CFLAGS = -Wall -Wextra -I./src -I./src/common -I./src/pi -I./wheel_timer
+LDFLAGS = -lpthread
 
-COMMON_HDRS = src/common/rsvp_protocol.h src/common/rsvp_log.h src/common/rsvp_error.h
-PI_HDRS = src/pi/rsvp_builder.h src/pi/rsvp_dispatcher.h src/pi/rsvp_parser.h src/pi/rsvp_state.h src/pi/rsvp_state_db.h src/pi/rsvp_state_machine.h src/pi/label_mgr.h src/pi/rsvp_timers.h
+COMMON_HDRS = src/common/rsvp_protocol.h src/common/rsvp_log.h src/common/rsvp_error.h wheel_timer/wheel_timer.h wheel_timer/list.h
+PI_HDRS = src/pi/rsvp_builder.h src/pi/rsvp_dispatcher.h src/pi/rsvp_parser.h src/pi/rsvp_state.h src/pi/rsvp_state_db.h src/pi/rsvp_state_machine.h src/pi/label_mgr.h src/pi/rsvp_timers.h src/pi/rsvp_cli.h
 
-SRC = src/main.c src/pi/rsvp_dispatcher.c src/pi/rsvp_parser.c src/pi/rsvp_state_db.c src/pi/rsvp_state_machine.c src/pi/label_mgr.c src/pi/rsvp_builder.c src/pi/rsvp_timers.c src/pd/hal_timer_linux.c src/pd/hal_netlink_linux.c src/common/rsvp_log.c
+SRC = src/main.c src/pi/rsvp_dispatcher.c src/pi/rsvp_parser.c src/pi/rsvp_state_db.c src/pi/rsvp_state_machine.c src/pi/label_mgr.c src/pi/rsvp_builder.c src/pi/rsvp_timers.c src/pi/rsvp_cli.c src/pd/hal_timer_linux.c src/pd/hal_netlink_linux.c src/common/rsvp_log.c wheel_timer/wheel_timer.c
 OBJ = $(SRC:.c=.o)
 TARGET = rsvp_daemon
 
-TEST_SRC = test_rsvp.c src/pi/rsvp_parser.c src/pi/rsvp_state_db.c src/pi/rsvp_state_machine.c src/pi/label_mgr.c src/pi/rsvp_builder.c src/pi/rsvp_timers.c src/common/rsvp_log.c
+TEST_SRC = test_rsvp.c src/pi/rsvp_parser.c src/pi/rsvp_state_db.c src/pi/rsvp_state_machine.c src/pi/label_mgr.c src/pi/rsvp_builder.c src/pi/rsvp_timers.c src/common/rsvp_log.c wheel_timer/wheel_timer.c
 TEST_OBJ = $(TEST_SRC:.c=.o)
 TEST_TARGET = test_rsvp
 

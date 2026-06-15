@@ -81,17 +81,17 @@ static void handle_path_message(struct rsvp_message_info* info) {
     }
 
     /* Reset Cleanup Timer */
-    if (psb->cleanup_timer_id == 0 ||
-        !rsvp_timer_reset(psb->cleanup_timer_id, RSVP_CLEANUP_MS(psb->refresh_ms))) {
-        psb->cleanup_timer_id = rsvp_timer_start(
+    if (!psb->cleanup_timer.active ||
+        !rsvp_timer_reset(&psb->cleanup_timer, RSVP_CLEANUP_MS(psb->refresh_ms))) {
+        rsvp_timer_start(&psb->cleanup_timer, 
             RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(psb->refresh_ms), psb_cleanup_timer_cb, psb);
     }
 
     /* Refresh Timer: Reset to jittered backup value for Transit nodes */
     uint32_t next_refresh = get_jittered_refresh(psb->refresh_ms, true);
-    if (psb->refresh_timer_id == 0 ||
-        !rsvp_timer_reset(psb->refresh_timer_id, next_refresh)) {
-        psb->refresh_timer_id = rsvp_timer_start(
+    if (!psb->refresh_timer.active ||
+        !rsvp_timer_reset(&psb->refresh_timer, next_refresh)) {
+        rsvp_timer_start(&psb->refresh_timer, 
             RSVP_TIMER_REFRESH, next_refresh, psb_refresh_timer_cb, psb);
     }
 
@@ -112,10 +112,10 @@ static void handle_path_message(struct rsvp_message_info* info) {
                 psb->associated_rsb = rsb;
                 rsb->refresh_ms = psb->refresh_ms;
 
-                rsb->cleanup_timer_id = rsvp_timer_start(
+                rsvp_timer_start(&rsb->cleanup_timer, 
                     RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(rsb->refresh_ms), rsb_cleanup_timer_cb,
                     rsb);
-                rsb->refresh_timer_id = rsvp_timer_start(
+                rsvp_timer_start(&rsb->refresh_timer, 
                     RSVP_TIMER_REFRESH, get_jittered_refresh(rsb->refresh_ms, false), rsb_refresh_timer_cb,
                     rsb);
 
@@ -182,17 +182,17 @@ static void handle_resv_message(struct rsvp_message_info* info) {
     }
 
     /* Reset Cleanup Timer */
-    if (rsb->cleanup_timer_id == 0 ||
-        !rsvp_timer_reset(rsb->cleanup_timer_id, RSVP_CLEANUP_MS(rsb->refresh_ms))) {
-        rsb->cleanup_timer_id = rsvp_timer_start(
+    if (!rsb->cleanup_timer.active ||
+        !rsvp_timer_reset(&rsb->cleanup_timer, RSVP_CLEANUP_MS(rsb->refresh_ms))) {
+        rsvp_timer_start(&rsb->cleanup_timer, 
             RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(rsb->refresh_ms), rsb_cleanup_timer_cb, rsb);
     }
 
     /* Refresh Timer: Reset to jittered backup value for Transit nodes */
     uint32_t next_refresh_rsb = get_jittered_refresh(rsb->refresh_ms, true);
-    if (rsb->refresh_timer_id == 0 ||
-        !rsvp_timer_reset(rsb->refresh_timer_id, next_refresh_rsb)) {
-        rsb->refresh_timer_id = rsvp_timer_start(
+    if (!rsb->refresh_timer.active ||
+        !rsvp_timer_reset(&rsb->refresh_timer, next_refresh_rsb)) {
+        rsvp_timer_start(&rsb->refresh_timer, 
             RSVP_TIMER_REFRESH, next_refresh_rsb, rsb_refresh_timer_cb, rsb);
     }
 
@@ -246,13 +246,13 @@ static void handle_path_tear(struct rsvp_message_info* info) {
 
         /* If associated RSB exists, it should also be torn down or notified */
         if (psb->associated_rsb) {
-            rsvp_timer_stop(psb->associated_rsb->refresh_timer_id);
-            rsvp_timer_stop(psb->associated_rsb->cleanup_timer_id);
+            rsvp_timer_stop(&psb->associated_rsb->refresh_timer);
+            rsvp_timer_stop(&psb->associated_rsb->cleanup_timer);
             rsvp_rsb_delete(psb->associated_rsb);
         }
 
-        rsvp_timer_stop(psb->refresh_timer_id);
-        rsvp_timer_stop(psb->cleanup_timer_id);
+        rsvp_timer_stop(&psb->refresh_timer);
+        rsvp_timer_stop(&psb->cleanup_timer);
         rsvp_psb_delete(psb);
     }
 }
@@ -275,8 +275,8 @@ static void handle_resv_tear(struct rsvp_message_info* info) {
             rsb->associated_psb->associated_rsb = NULL;
         }
 
-        rsvp_timer_stop(rsb->refresh_timer_id);
-        rsvp_timer_stop(rsb->cleanup_timer_id);
+        rsvp_timer_stop(&rsb->refresh_timer);
+        rsvp_timer_stop(&rsb->cleanup_timer);
         rsvp_rsb_delete(rsb);
     }
 }
@@ -553,10 +553,10 @@ void rsvp_initiate_path(struct in_addr* src, struct in_addr* dest,
         psb = rsvp_psb_create(&key);
         if (!psb) return;
         psb->refresh_ms = RSVP_REFRESH_MS;
-        psb->cleanup_timer_id = rsvp_timer_start(
+        rsvp_timer_start(&psb->cleanup_timer, 
             RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(psb->refresh_ms),
             psb_cleanup_timer_cb, psb);
-        psb->refresh_timer_id = rsvp_timer_start(
+        rsvp_timer_start(&psb->refresh_timer, 
             RSVP_TIMER_REFRESH, get_jittered_refresh(psb->refresh_ms, false),
             psb_refresh_timer_cb, psb);
         psb->lsp_name = lsp_name ? strdup(lsp_name) : NULL;
@@ -576,10 +576,10 @@ static void psb_refresh_timer_cb(void* arg) {
             if (psb->refresh_count > 2) {
                 LOG_INFO("PSB: Missed 2 refreshes, tearing down state");
                 propagate_path_tear(psb);
-                rsvp_timer_stop(psb->cleanup_timer_id);
+                rsvp_timer_stop(&psb->cleanup_timer);
                 if (psb->associated_rsb) {
-                    rsvp_timer_stop(psb->associated_rsb->refresh_timer_id);
-                    rsvp_timer_stop(psb->associated_rsb->cleanup_timer_id);
+                    rsvp_timer_stop(&psb->associated_rsb->refresh_timer);
+                    rsvp_timer_stop(&psb->associated_rsb->cleanup_timer);
                     rsvp_rsb_delete(psb->associated_rsb);
                 }
                 rsvp_psb_delete(psb);
@@ -590,7 +590,7 @@ static void psb_refresh_timer_cb(void* arg) {
         send_path_downstream(psb);
     }
 
-    psb->refresh_timer_id = rsvp_timer_start(
+    rsvp_timer_start(&psb->refresh_timer, 
         RSVP_TIMER_REFRESH, get_jittered_refresh(psb->refresh_ms, is_transit),
         psb_refresh_timer_cb, psb);
 }
@@ -600,10 +600,10 @@ static void psb_cleanup_timer_cb(void* arg) {
     LOG_INFO("PSB Cleanup Timer Expired: Tearing down state");
     propagate_path_tear(psb);
 
-    rsvp_timer_stop(psb->refresh_timer_id);
+    rsvp_timer_stop(&psb->refresh_timer);
     if (psb->associated_rsb) {
-        rsvp_timer_stop(psb->associated_rsb->refresh_timer_id);
-        rsvp_timer_stop(psb->associated_rsb->cleanup_timer_id);
+        rsvp_timer_stop(&psb->associated_rsb->refresh_timer);
+        rsvp_timer_stop(&psb->associated_rsb->cleanup_timer);
         rsvp_rsb_delete(psb->associated_rsb);
     }
     rsvp_psb_delete(psb);
@@ -629,7 +629,7 @@ static void rsb_refresh_timer_cb(void* arg) {
             if (rsb->refresh_count > 2) {
                 LOG_INFO("RSB: Missed 2 refreshes from downstream, tearing down state");
                 propagate_resv_tear(rsb);
-                rsvp_timer_stop(rsb->cleanup_timer_id);
+                rsvp_timer_stop(&rsb->cleanup_timer);
                 if (rsb->associated_psb) rsb->associated_psb->associated_rsb = NULL;
                 if (rsb->label_in != 0) {
                     hal_mpls_remove(rsb->label_in);
@@ -644,7 +644,7 @@ static void rsb_refresh_timer_cb(void* arg) {
         send_resv_upstream(rsb);
     }
 
-    rsb->refresh_timer_id = rsvp_timer_start(
+    rsvp_timer_start(&rsb->refresh_timer, 
         RSVP_TIMER_REFRESH, get_jittered_refresh(rsb->refresh_ms, is_rsb_backup),
         rsb_refresh_timer_cb, rsb);
 }
@@ -654,7 +654,7 @@ static void rsb_cleanup_timer_cb(void* arg) {
     LOG_INFO("RSB Cleanup Timer Expired: Tearing down state");
     propagate_resv_tear(rsb);
 
-    rsvp_timer_stop(rsb->refresh_timer_id);
+    rsvp_timer_stop(&rsb->refresh_timer);
     if (rsb->associated_psb) rsb->associated_psb->associated_rsb = NULL;
     if (rsb->label_in != 0) {
         hal_mpls_remove(rsb->label_in);

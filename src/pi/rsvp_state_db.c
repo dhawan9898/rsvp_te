@@ -102,3 +102,42 @@ void rsvp_rsb_delete(struct rsvp_rsb* rsb) {
         curr = curr->next_hash;
     }
 }
+
+#include <stdio.h>
+#include <arpa/inet.h>
+
+void rsvp_psb_dump(void) {
+    printf("--- Path State Blocks (PSBs) ---\n");
+    int count = 0;
+    for (int i = 0; i < HASH_SIZE; i++) {
+        struct rsvp_psb* psb = psb_table[i];
+        while (psb) {
+            printf("PSB: Tunnel ID %d, Dest: %s, Sender: %s, LSP Name: %s\n",
+                   ntohs(psb->key.session.tunnel_id),
+                   inet_ntoa(psb->key.session.dest_addr),
+                   inet_ntoa(psb->key.sender.source_addr),
+                   psb->lsp_name ? psb->lsp_name : "N/A");
+            psb = psb->next_hash;
+            count++;
+        }
+    }
+    printf("Total PSBs: %d\n--------------------------------\n", count);
+}
+
+void rsvp_rsb_dump(void) {
+    printf("--- Reservation State Blocks (RSBs) ---\n");
+    int count = 0;
+    for (int i = 0; i < HASH_SIZE; i++) {
+        struct rsvp_rsb* rsb = rsb_table[i];
+        while (rsb) {
+            printf("RSB: Tunnel ID %d, Dest: %s, Sender: %s, Label In: %u, Label Out: %u\n",
+                   ntohs(rsb->key.session.tunnel_id),
+                   inet_ntoa(rsb->key.session.dest_addr),
+                   inet_ntoa(rsb->key.sender.source_addr),
+                   rsb->label_in, rsb->label_out);
+            rsb = rsb->next_hash;
+            count++;
+        }
+    }
+    printf("Total RSBs: %d\n---------------------------------------\n", count);
+}
