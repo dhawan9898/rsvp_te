@@ -116,6 +116,16 @@ void rsvp_dispatcher_run(void) {
                         recvfrom(rsvp_raw_sock, buffer, sizeof(buffer), 0,
                                  (struct sockaddr*)&src_addr, &addr_len);
                     if (bytes_read > 0) {
+                        if (bytes_read >= (ssize_t)sizeof(struct iphdr)) {
+                            struct iphdr* ip = (struct iphdr*)buffer;
+                            struct in_addr packet_src;
+                            packet_src.s_addr = ip->saddr;
+
+                            if (hal_netlink_is_local_addr(&packet_src)) {
+                                /* Drop silently; this packet was sent by us */
+                                continue; 
+                            }
+                        }
                         memset(&info, 0, sizeof(info));
                         if (rsvp_parse_packet(buffer, bytes_read, &info) == RSVP_SUCCESS) {
                             rsvp_handle_message(&info);

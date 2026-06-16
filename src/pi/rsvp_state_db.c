@@ -10,10 +10,11 @@ static struct rsvp_rsb* rsb_table[HASH_SIZE];
 
 static uint32_t rsvp_key_hash(struct rsvp_path_key* key) {
     uint32_t hash = 0;
-    uint8_t* p = (uint8_t*)key;
-    for (size_t i = 0; i < sizeof(struct rsvp_path_key); i++) {
-        hash = hash * 31 + p[i];
-    }
+    hash = hash * 31 + key->session.dest_addr.s_addr;
+    hash = hash * 31 + key->session.tunnel_id;
+    hash = hash * 31 + key->session.extended_tunnel_id.s_addr;
+    hash = hash * 31 + key->sender.source_addr.s_addr;
+    hash = hash * 31 + key->sender.lsp_id;
     return hash % HASH_SIZE;
 }
 

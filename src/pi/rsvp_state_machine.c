@@ -185,6 +185,7 @@ static void handle_resv_message(struct rsvp_message_info* info) {
         rsvp_timer_start(&rsb->cleanup_timer, 
             RSVP_TIMER_CLEANUP, RSVP_CLEANUP_MS(rsb->refresh_ms), rsb_cleanup_timer_cb, rsb);
     }
+    rsb->refresh_count = 0;
 
     /* Refresh Timer: Only for Transit and Egress nodes (upstream refresh) */
     if (rsb->associated_psb && !rsb->associated_psb->is_ingress) {
@@ -490,6 +491,7 @@ static void send_path_downstream(struct rsvp_psb* psb) {
     uint8_t buf[1024];
     struct rsvp_builder b;
     struct in_addr dest_addr = psb->key.session.dest_addr;
+    struct in_addr source_addr = psb->key.sender.source_addr;
     struct in_addr ext_dest = psb->key.session.extended_tunnel_id;
     struct in_addr next_hop = {0};
 
@@ -534,8 +536,7 @@ static void send_path_downstream(struct rsvp_psb* psb) {
     rsvp_builder_add_tspec(&b, &tspec);
 
     size_t len = rsvp_builder_finalize(&b);
-    struct in_addr src_ip = psb->key.sender.source_addr;
-    rsvp_send_packet(&src_ip, &dest_addr, buf, len, true);
+    rsvp_send_packet(&source_addr, &dest_addr, buf, len, true);
 }
 
 void rsvp_initiate_path(struct in_addr* src, struct in_addr* dest,
