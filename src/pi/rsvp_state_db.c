@@ -6,6 +6,7 @@
 
 #include "rsvp_state_db.h"
 #include "common/rsvp_log.h"
+#include "pi/rsvp_timers.h"
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
@@ -15,6 +16,7 @@
 /* Hash tables for state blocks */
 static struct rsvp_psb* psb_table[HASH_SIZE];
 static struct rsvp_rsb* rsb_table[HASH_SIZE];
+static struct rsvp_bsb* bsb_table[HASH_SIZE];
 
 /**
  * @brief Compute the hash for a given RSVP path key.
@@ -36,6 +38,7 @@ void rsvp_state_db_init(void) {
     LOG_INFO("Initializing RSVP State Database");
     memset(psb_table, 0, sizeof(psb_table));
     memset(rsb_table, 0, sizeof(rsb_table));
+    memset(bsb_table, 0, sizeof(bsb_table));
 }
 
 struct rsvp_psb* rsvp_psb_find(struct rsvp_path_key* key) {
@@ -107,6 +110,11 @@ void rsvp_psb_delete(struct rsvp_psb* psb) {
     while (curr) {
         if (curr == psb) {
             *prev = curr->next_hash;
+            
+            /* Industrial safety: Ensure timers are stopped before freeing memory */
+            rsvp_timer_stop(&psb->refresh_timer);
+            rsvp_timer_stop(&psb->cleanup_timer);
+            
             if (psb->lsp_name) free(psb->lsp_name);
             free(psb);
             return;
@@ -171,7 +179,76 @@ void rsvp_rsb_delete(struct rsvp_rsb* rsb) {
     while (curr) {
         if (curr == rsb) {
             *prev = curr->next_hash;
+            
+            /* Industrial safety: Ensure timers are stopped before freeing memory */
+            rsvp_timer_stop(&rsb->refresh_timer);
+            rsvp_timer_stop(&rsb->cleanup_timer);
+            
             free(rsb);
+            return;
+        }
+        prev = &curr->next_hash;
+        curr = curr->next_hash;
+    }
+}
+
+struct rsvp_bsb* rsvp_bsb_find(struct rsvp_path_key* key) {
+    uint32_t h = rsvp_key_hash(key);
+    struct rsvp_bsb* bsb = bsb_table[h];
+    
+    while (bsb) {
+        if (memcmp(&bsb->key, key, sizeof(struct rsvp_path_key)) == 0) {
+            return bsb;
+        }
+        bsb = bsb->next_hash;
+    }
+    return NULL;
+}
+
+struct rsvp_bsb* rsvp_bsb_create(struct rsvp_path_key* key) {
+    char dest_buf[INET_ADDRSTRLEN];
+    char src_buf[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &key->session.dest_addr, dest_buf, sizeof(dest_buf));
+    inet_ntop(AF_INET, &key->sender.source_addr, src_buf, sizeof(src_buf));
+    
+    LOG_DEBUG("Creating BSB: Tunnel ID %d, Dest %s, Source %s", 
+              ntohs(key->session.tunnel_id), dest_buf, src_buf);
+
+    struct rsvp_bsb* bsb = calloc(1, sizeof(struct rsvp_bsb));
+    if (!bsb) {
+        LOG_ERROR("Failed to allocate memory for BSB");
+        return NULL;
+    }
+
+    memcpy(&bsb->key, key, sizeof(struct rsvp_path_key));
+    uint32_t h = rsvp_key_hash(key);
+    bsb->next_hash = bsb_table[h];
+    bsb_table[h] = bsb;
+
+    return bsb;
+}
+
+void rsvp_bsb_delete(struct rsvp_bsb* bsb) {
+    char dest_buf[INET_ADDRSTRLEN];
+    char src_buf[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &bsb->key.session.dest_addr, dest_buf, sizeof(dest_buf));
+    inet_ntop(AF_INET, &bsb->key.sender.source_addr, src_buf, sizeof(src_buf));
+    
+    LOG_DEBUG("Deleting BSB: Tunnel ID %d, Dest %s, Source %s", 
+              ntohs(bsb->key.session.tunnel_id), dest_buf, src_buf);
+
+    uint32_t h = rsvp_key_hash(&bsb->key);
+    struct rsvp_bsb** prev = &bsb_table[h];
+    struct rsvp_bsb* curr = bsb_table[h];
+
+    while (curr) {
+        if (curr == bsb) {
+            *prev = curr->next_hash;
+            
+            /* Industrial safety: Ensure timer is stopped before freeing memory */
+            rsvp_timer_stop(&bsb->blockade_timer);
+            
+            free(bsb);
             return;
         }
         prev = &curr->next_hash;

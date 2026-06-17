@@ -12,9 +12,13 @@
 #include "rsvp_protocol.h"
 #include "rsvp_timers.h"
 
+#define MAX_ERO_HOPS 32
+#define MAX_RRO_HOPS 32
+
 /* Forward declarations */
 struct rsvp_psb;
 struct rsvp_rsb;
+struct rsvp_bsb;
 
 /**
  * @brief Key for Path State Block (PSB)
@@ -37,6 +41,15 @@ struct rsvp_psb {
     uint32_t ifindex_in;           /**< Ingress interface index */
     uint32_t ifindex_out;          /**< Egress interface index */
     char* lsp_name;                /**< Name of the LSP tunnel */
+
+    /* RSVP-TE Properties */
+    struct rsvp_ero_ipv4_subobj ero[MAX_ERO_HOPS]; /**< Explicit Route Object */
+    uint8_t ero_count;
+    struct rsvp_ero_ipv4_subobj rro[MAX_RRO_HOPS]; /**< Record Route Object */
+    uint8_t rro_count;
+    struct rsvp_sender_tspec tspec;                /**< Traffic Specification */
+    uint8_t setup_prio;                            /**< Setup Priority */
+    uint8_t holding_prio;                          /**< Holding Priority */
 
     /* State Management */
     rsvp_timer_t cleanup_timer; /**< Timer for expiring the state */
@@ -65,6 +78,10 @@ struct rsvp_rsb {
     uint32_t label_in;             /**< MPLS label allocated by this node */
     uint32_t label_out;            /**< MPLS label received from the downstream node */
 
+    /* Traffic Control & Merging */
+    struct rsvp_sender_tspec flowspec; /**< Effective reservation flowspec */
+    uint8_t style;                     /**< Reservation style (FF, SE, WF) */
+
     /* State Management */
     rsvp_timer_t cleanup_timer; /**< Timer for expiring the state */
     rsvp_timer_t refresh_timer; /**< Timer for sending periodic refresh messages */
@@ -76,6 +93,21 @@ struct rsvp_rsb {
     /* Chaining */
     struct rsvp_rsb* next_hash;      /**< Next RSB in the hash bucket */
     struct rsvp_psb* associated_psb; /**< Pointer to the associated PSB */
+};
+
+/**
+ * @brief Blockade State Block (BSB)
+ * @details Used to prevent "Killer Reservations" (RFC 2209).
+ */
+struct rsvp_bsb {
+    struct rsvp_path_key key; /**< Identifies (Session, Sender/PHOP) */
+
+    /* Blockade State */
+    struct rsvp_sender_tspec flowspec_qb; /**< Blockade Flowspec Qb */
+    rsvp_timer_t blockade_timer;          /**< Blockade Timer Tb */
+
+    /* Chaining */
+    struct rsvp_bsb* next_hash; /**< Next BSB in hash bucket */
 };
 
 #endif /* RSVP_STATE_H */

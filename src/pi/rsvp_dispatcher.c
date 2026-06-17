@@ -21,6 +21,7 @@
 #include "hal/hal_netlink.h"
 #include "pi/rsvp_timers.h"
 #include "rsvp_parser.h"
+#include "rsvp_builder.h"
 #include "rsvp_state_machine.h"
 #include "rsvp_cli.h"
 
@@ -32,7 +33,7 @@ static int rsvp_raw_sock = -1;
 
 int rsvp_dispatcher_init(void) {
     int one = 1;
-    
+
     /* Create a raw socket to send and receive RSVP (protocol 46) packets */
     rsvp_raw_sock = socket(AF_INET, SOCK_RAW, RSVP_PROTOCOL);
     if (rsvp_raw_sock < 0) {
@@ -138,7 +139,7 @@ void rsvp_dispatcher_run(void) {
 
                             if (hal_netlink_is_local_addr(&packet_src)) {
                                 /* Drop silently; this packet was sent by us */
-                                continue; 
+                                continue;
                             }
                         }
 
@@ -147,13 +148,14 @@ void rsvp_dispatcher_run(void) {
                         LOG_DEBUG("Dispatcher: Received %zd bytes from %s", bytes_read, src_str);
 
                         memset(&info, 0, sizeof(info));
-                        
+
                         /* Parse and handle the RSVP message */
                         rsvp_error_t err = rsvp_parse_packet(buffer, bytes_read, &info);
                         if (err == RSVP_SUCCESS) {
                             rsvp_handle_message(&info);
                         } else {
                             LOG_WARN("Dispatcher: Failed to parse RSVP packet from %s (Error: %d)", src_str, err);
+                            /* TODO: Handle Error message */
                         }
                     } else if (bytes_read < 0 && errno != EINTR) {
                         LOG_ERROR("recvfrom: %s", strerror(errno));
@@ -192,7 +194,7 @@ rsvp_error_t rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t
     iph->version = 4;
     iph->tos = 0;
     iph->tot_len = htons(total_len);
-    iph->id = 0;
+    iph->id = htons(54321);
     iph->frag_off = 0;
 
     /* Try to get TTL from RSVP header */
@@ -202,7 +204,10 @@ rsvp_error_t rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t
     iph->protocol = RSVP_PROTOCOL;
     iph->saddr = src->s_addr;
     iph->daddr = dest->s_addr;
+    
+    /* Calculate IP Checksum */
     iph->check = 0;
+    iph->check = rsvp_checksum(packet, iph->ihl * 4);
 
     /* Append the Router Alert Option if requested */
     if (use_rao) {
@@ -235,7 +240,7 @@ rsvp_error_t rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t
     inet_ntop(AF_INET, dest, dest_str, sizeof(dest_str));
     inet_ntop(AF_INET, src, src_str, sizeof(src_str));
 
-    LOG_INFO("Sent %zd bytes to %s from %s (Type: %d, TTL: %d, RAO: %s)", 
+    LOG_INFO("Sent %zd bytes to %s from %s (Type: %d, TTL: %d, RAO: %s)",
              bytes_sent, dest_str, src_str, rsvp_hdr->msg_type, iph->ttl, use_rao ? "on" : "off");
     return RSVP_SUCCESS;
 }

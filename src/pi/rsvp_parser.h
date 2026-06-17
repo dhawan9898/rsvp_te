@@ -41,6 +41,8 @@ struct rsvp_message_info {
     struct rsvp_style* style;
     struct rsvp_ero_ipv4_subobj* ero;
     size_t ero_len;
+    struct rsvp_ero_ipv4_subobj* rro;
+    size_t rro_len;
     struct rsvp_label_ipv4* label;
     struct rsvp_label_request* label_req;
     struct rsvp_session_attribute* sess_attr;

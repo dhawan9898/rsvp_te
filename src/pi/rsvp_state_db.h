@@ -68,6 +68,28 @@ struct rsvp_rsb* rsvp_rsb_create(struct rsvp_path_key* key);
 void rsvp_rsb_delete(struct rsvp_rsb* rsb);
 
 /**
+ * @brief Find a Blockade State Block (BSB) by its key.
+ * @param [in] key Pointer to the path key.
+ * @return Pointer to the matching BSB, or NULL if not found.
+ */
+struct rsvp_bsb* rsvp_bsb_find(struct rsvp_path_key* key);
+
+/**
+ * @brief Create a new Blockade State Block (BSB).
+ * @details Allocates memory for a new BSB, initializes it with the given key, and inserts it into the database.
+ * @param [in] key Pointer to the path key.
+ * @return Pointer to the newly created BSB, or NULL on memory allocation failure.
+ */
+struct rsvp_bsb* rsvp_bsb_create(struct rsvp_path_key* key);
+
+/**
+ * @brief Delete a Blockade State Block (BSB).
+ * @details Removes the BSB from the hash table and frees its allocated memory.
+ * @param [in] bsb Pointer to the BSB to delete.
+ */
+void rsvp_bsb_delete(struct rsvp_bsb* bsb);
+
+/**
  * @brief Dump all Path State Blocks (PSBs) to standard output.
  * @details Useful for debugging and CLI 'show' commands.
  */

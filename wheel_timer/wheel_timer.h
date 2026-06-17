@@ -1,10 +1,11 @@
 #ifndef WHEEL_TIMER_H
 #define WHEEL_TIMER_H
 
-#include <stdint.h>
 #include <pthread.h>
-#include <stdbool.h>
 #include <stdatomic.h>
+#include <stdbool.h>
+#include <stdint.h>
+
 #include "list.h"
 
 #ifdef __cplusplus
@@ -18,27 +19,27 @@ extern "C" {
 #define WHEEL_TVR_MASK (WHEEL_TVR_SIZE - 1)
 #define WHEEL_TVN_MASK (WHEEL_TVN_SIZE - 1)
 
-typedef void (*timer_cb_t)(void *arg);
+typedef void (*timer_cb_t)(void* arg);
 
 /* Opaque handle for the timer wheel */
 typedef struct timer_wheel timer_wheel_t;
 
 typedef struct timer_node_s {
     struct list_head entry;
-    uint64_t expires;       /* Absolute tick value when this timer expires */
-    uint64_t period;        /* Period in ticks for periodic timers, 0 if one-shot */
+    uint64_t expires; /* Absolute tick value when this timer expires */
+    uint64_t period;  /* Period in ticks for periodic timers, 0 if one-shot */
     timer_cb_t callback;
-    void *arg;
-    timer_wheel_t *wheel;    /* Wheel this node is currently registered with */
-    bool pending;            /* Flag to track if timer is in a wheel */
-    atomic_bool executing;   /* Flag to track if callback is currently running */
+    void* arg;
+    timer_wheel_t* wheel;  /* Wheel this node is currently registered with */
+    bool pending;          /* Flag to track if timer is in a wheel */
+    atomic_bool executing; /* Flag to track if callback is currently running */
 } timer_node_t;
 
 /**
  * timer_node_init - Initialize a timer node
  * @node: The node to initialize
  */
-void timer_node_init(timer_node_t *node);
+void timer_node_init(timer_node_t* node);
 
 /**
  * timer_wheel_create - Initialize the timer wheel
@@ -53,7 +54,7 @@ timer_wheel_t* timer_wheel_create(unsigned int tick_ms, int worker_count);
  * timer_wheel_destroy - Stop and cleanup the timer wheel
  * @wheel: The wheel to destroy
  */
-void timer_wheel_destroy(timer_wheel_t *wheel);
+void timer_wheel_destroy(timer_wheel_t* wheel);
 
 /**
  * timer_add - Add a new one-shot timer
@@ -65,8 +66,8 @@ void timer_wheel_destroy(timer_wheel_t *wheel);
  *
  * Returns 0 on success, negative on error.
  */
-int timer_add(timer_wheel_t *wheel, timer_node_t *node, 
-              unsigned int expires_ms, timer_cb_t cb, void *arg);
+int timer_add(timer_wheel_t* wheel, timer_node_t* node, unsigned int expires_ms,
+              timer_cb_t cb, void* arg);
 
 /**
  * timer_add_periodic - Add a periodic timer
@@ -78,21 +79,21 @@ int timer_add(timer_wheel_t *wheel, timer_node_t *node,
  *
  * Returns 0 on success, negative on error.
  */
-int timer_add_periodic(timer_wheel_t *wheel, timer_node_t *node, 
-                       unsigned int period_ms, timer_cb_t cb, void *arg);
+int timer_add_periodic(timer_wheel_t* wheel, timer_node_t* node,
+                       unsigned int period_ms, timer_cb_t cb, void* arg);
 
 /**
  * timer_del - Delete a pending timer (Asynchronous)
  * @wheel: The wheel the timer belongs to
  * @node: The timer node to delete
  *
- * Returns 0 if timer was deleted or is currently executing, 
+ * Returns 0 if timer was deleted or is currently executing,
  * 1 if it wasn't pending, negative on error.
- * 
+ *
  * Note: If the timer is currently executing, it will not be re-armed,
  * but this function returns IMMEDIATELY without waiting for the callback.
  */
-int timer_del(timer_wheel_t *wheel, timer_node_t *node);
+int timer_del(timer_wheel_t* wheel, timer_node_t* node);
 
 /**
  * timer_del_sync - Delete a pending timer and wait for completion
@@ -101,10 +102,10 @@ int timer_del(timer_wheel_t *wheel, timer_node_t *node);
  *
  * Similar to timer_del, but if the timer is currently executing,
  * this function blocks until the callback has finished.
- * 
+ *
  * WARNING: Do NOT call this from within the timer's own callback.
  */
-int timer_del_sync(timer_wheel_t *wheel, timer_node_t *node);
+int timer_del_sync(timer_wheel_t* wheel, timer_node_t* node);
 
 /**
  * timer_mod - Modify an existing timer's expiration
@@ -114,7 +115,8 @@ int timer_del_sync(timer_wheel_t *wheel, timer_node_t *node);
  *
  * Returns 0 on success.
  */
-int timer_mod(timer_wheel_t *wheel, timer_node_t *node, unsigned int expires_ms);
+int timer_mod(timer_wheel_t* wheel, timer_node_t* node,
+              unsigned int expires_ms);
 
 #ifdef __cplusplus
 }

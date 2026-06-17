@@ -1,7 +1,8 @@
 /**
  * @file rsvp_parser.c
  * @brief RSVP Packet Parser Implementation.
- * @details Implements the logic to parse raw RSVP packets, validate checksums, and extract objects according to RFC 2205.
+ * @details Implements the logic to parse raw RSVP packets, validate checksums,
+ *           and extract objects according to RFC 2205.
  */
 
 #include "rsvp_parser.h"
@@ -17,6 +18,9 @@
 rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
                                struct rsvp_message_info* info) {
     LOG_DEBUG("Parser: Starting RSVP packet parsing (Length: %zu)", len);
+
+    if (!info) return RSVP_ERR_INVALID_PARAM;
+    memset(info, 0, sizeof(struct rsvp_message_info));
 
     /* Validate the overall length is at least the size of an IP header */
     if (len < sizeof(struct iphdr)) {
@@ -43,7 +47,7 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
     const struct rsvp_common_hdr* rsvp_hdr =
         (const struct rsvp_common_hdr*)(buffer + ip_hdr_len);
     size_t rsvp_len = ntohs(rsvp_hdr->length);
-    
+
     LOG_DEBUG("Parser: RSVP Header [Ver: %d, Type: %d, Flags: 0x%x, Length: %zu, TTL: %d]",
               rsvp_hdr->ver_flags >> 4, rsvp_hdr->msg_type, rsvp_hdr->ver_flags & 0x0F,
               rsvp_len, rsvp_hdr->ttl);
@@ -57,10 +61,9 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
         return RSVP_ERR_BUFFER_TOO_SMALL;
     }
 
-    info->common_hdr = (struct rsvp_common_hdr*)rsvp_hdr; 
+    info->common_hdr = (struct rsvp_common_hdr*)rsvp_hdr;
     info->payload = (uint8_t*)(rsvp_hdr + 1);
     info->payload_len = rsvp_len - sizeof(struct rsvp_common_hdr);
-    memset(info->lsp_name, 0, sizeof(info->lsp_name));
 
     /* Verify RSVP version */
     if ((rsvp_hdr->ver_flags >> 4) != RSVP_VERSION) {
@@ -78,7 +81,7 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
         hdr_ptr->checksum = received_checksum; /* Restore */
 
         if (received_checksum != computed_checksum) {
-            LOG_WARN("Parser: Checksum FAILED! (Received: 0x%x, Computed: 0x%x)", 
+            LOG_WARN("Parser: Checksum FAILED! (Received: 0x%x, Computed: 0x%x)",
                      ntohs(received_checksum), ntohs(computed_checksum));
             return RSVP_ERR_CHECKSUM;
         }
@@ -99,7 +102,7 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
 
         if (obj_len < sizeof(struct rsvp_obj_hdr) || obj_len > remaining) {
             LOG_WARN("Parser: Invalid object length: %zu (Remaining: %zu)", obj_len, remaining);
-            return RSVP_ERR_MALFORMED_OBJ; 
+            return RSVP_ERR_MALFORMED_OBJ;
         }
 
         size_t aligned_obj_len = RSVP_ALIGN(obj_len);
@@ -151,7 +154,7 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
             case RSVP_CLASS_FLOWSPEC:
                 if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_sender_tspec)) {
                     info->flowspec = (struct rsvp_sender_tspec*)obj_data;
-                    LOG_DEBUG("  - FLOWSPEC: Rate %.2f, Size %.2f", 
+                    LOG_DEBUG("  - FLOWSPEC: Rate %.2f, Size %.2f",
                               info->flowspec->token_bucket_rate, info->flowspec->token_bucket_size);
                 }
                 break;
@@ -161,7 +164,7 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
                     info->error_spec = (struct rsvp_error_spec_ipv4*)obj_data;
                     char node_str[INET_ADDRSTRLEN];
                     inet_ntop(AF_INET, &info->error_spec->error_node, node_str, sizeof(node_str));
-                    LOG_DEBUG("  - ERROR SPEC: Code %d, Value %d, Node %s", 
+                    LOG_DEBUG("  - ERROR SPEC: Code %d, Value %d, Node %s",
                               info->error_spec->error_code, info->error_spec->error_value, node_str);
                 }
                 break;
@@ -181,7 +184,7 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
             case RSVP_CLASS_SENDER_TSPEC:
                 if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_sender_tspec)) {
                     info->tspec = (struct rsvp_sender_tspec*)obj_data;
-                    LOG_DEBUG("  - SENDER TSPEC: Rate %.2f, Size %.2f", 
+                    LOG_DEBUG("  - SENDER TSPEC: Rate %.2f, Size %.2f",
                               info->tspec->token_bucket_rate, info->tspec->token_bucket_size);
                 }
                 break;
@@ -189,7 +192,7 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
             case RSVP_CLASS_ADSPEC:
                 if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_adspec)) {
                     info->adspec = (struct rsvp_adspec*)obj_data;
-                    LOG_DEBUG("  - ADSPEC: Version %d, Length %d words", 
+                    LOG_DEBUG("  - ADSPEC: Version %d, Length %d words",
                               info->adspec->version, ntohs(info->adspec->length));
                 }
                 break;
@@ -217,7 +220,11 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
                 break;
 
             case RSVP_CLASS_RECORD_ROUTE:
-                LOG_DEBUG("  - RRO: Length %zu", obj_len - sizeof(struct rsvp_obj_hdr));
+                if (obj_len > sizeof(struct rsvp_obj_hdr)) {
+                    info->rro = (struct rsvp_ero_ipv4_subobj*)obj_data;
+                    info->rro_len = obj_len - sizeof(struct rsvp_obj_hdr);
+                    LOG_DEBUG("  - RRO: Length %zu", info->rro_len);
+                }
                 break;
 
             case RSVP_CLASS_SESSION_ATTRIB:
@@ -249,7 +256,7 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
 
         if (aligned_obj_len == 0) break;
         if (aligned_obj_len > remaining) break;
-        
+
         obj_ptr += aligned_obj_len;
         remaining -= aligned_obj_len;
     }

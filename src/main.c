@@ -2,9 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-
 #include <time.h>
+#include <unistd.h>
 
 #include "common/rsvp_log.h"
 #include "pi/label_mgr.h"
@@ -13,11 +12,9 @@
 #include "pi/rsvp_state_machine.h"
 #include "pi/rsvp_timers.h"
 
-int main(int argc, char* argv[]) {
-    (void)argc;
-    (void)argv;
+int main() {
     srand(time(NULL));
-    
+
 #ifdef RSVP_LOGGING_ENABLED
     rsvp_log_init("rsvp_daemon.log");
 #endif
@@ -25,7 +22,7 @@ int main(int argc, char* argv[]) {
     LOG_INFO("Starting RSVP-TE Daemon...");
 
     rsvp_state_db_init();
-    label_mgr_init(10000, 20000);
+    label_mgr_init(1000, 20000);
     rsvp_timer_init();
 
     if (rsvp_dispatcher_init() < 0) {
