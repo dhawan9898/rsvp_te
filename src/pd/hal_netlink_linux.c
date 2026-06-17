@@ -11,6 +11,12 @@
 #include "common/rsvp_log.h"
 #include "hal/hal_netlink.h"
 
+#ifndef AF_MPLS
+#define AF_MPLS 28
+#endif
+
+#define RTA_VIA 18
+#define RTA_NEWDST 19
 #define MAX_INTERFACES 32
 
 struct interface {
@@ -34,6 +40,22 @@ static int find_iface_slot(int ifindex) {
         }
     }
     return -1;
+}
+
+static int addattr_l(struct nlmsghdr *n, size_t maxlen, int type, const void *data,
+                     int alen) {
+    int len = RTA_LENGTH(alen);
+    struct rtattr *rta;
+
+    if (NLMSG_ALIGN(n->nlmsg_len) + RTA_ALIGN(len) > maxlen) {
+        return -1;
+    }
+    rta = (struct rtattr *)(((char *)n) + NLMSG_ALIGN(n->nlmsg_len));
+    rta->rta_type = type;
+    rta->rta_len = len;
+    memcpy(RTA_DATA(rta), data, alen);
+    n->nlmsg_len = NLMSG_ALIGN(n->nlmsg_len) + RTA_ALIGN(len);
+    return 0;
 }
 
 int hal_netlink_init(void) {
@@ -225,12 +247,112 @@ int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex,
                      struct in_addr* next_hop) {
     LOG_INFO("[HAL-Linux] Installing MPLS: in=%u, out=%u, if=%d, next_hop=%s",
              in_label, out_label, out_ifindex, next_hop ? inet_ntoa(*next_hop) : "NULL");
-    /* Real implementation would use RTM_NEWROUTE with AF_MPLS */
+
+    if (in_label == 0) {
+        LOG_WARN("[HAL-Linux] Skipping MPLS install for in_label 0 (ingress IP encap not implemented)");
+        return 0;
+    }
+
+    struct {
+        struct nlmsghdr nlh;
+        struct rtmsg rtm;
+        char buf[512];
+    } req;
+
+    memset(&req, 0, sizeof(req));
+    req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+    req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE;
+    req.nlh.nlmsg_type = RTM_NEWROUTE;
+    req.nlh.nlmsg_seq = 2;
+    req.nlh.nlmsg_pid = getpid();
+    
+    req.rtm.rtm_family = AF_MPLS;
+    req.rtm.rtm_dst_len = 20;
+    req.rtm.rtm_table = RT_TABLE_MAIN;
+    req.rtm.rtm_protocol = RTPROT_BOOT;
+    req.rtm.rtm_type = RTN_UNICAST;
+
+    /* RTA_DST */
+    uint32_t label_dst = htonl(in_label << 12 | 1 << 8); /* BOS=1 */
+    addattr_l(&req.nlh, sizeof(req), RTA_DST, &label_dst, sizeof(label_dst));
+
+    /* RTA_OIF */
+    addattr_l(&req.nlh, sizeof(req), RTA_OIF, &out_ifindex, sizeof(out_ifindex));
+
+    /* RTA_NEWDST (if out_label != 0) */
+    if (out_label != 0) {
+        uint32_t label_new = htonl(out_label << 12 | 1 << 8); /* BOS=1 */
+        addattr_l(&req.nlh, sizeof(req), RTA_NEWDST, &label_new, sizeof(label_new));
+    }
+
+    /* RTA_VIA */
+    if (next_hop && next_hop->s_addr != 0) {
+        struct {
+            unsigned short rtvia_family;
+            uint8_t rtvia_addr[4];
+        } via;
+        via.rtvia_family = AF_INET;
+        memcpy(via.rtvia_addr, &next_hop->s_addr, 4);
+        addattr_l(&req.nlh, sizeof(req), RTA_VIA, &via, sizeof(via));
+    }
+
+    int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+    if (sock < 0) {
+        LOG_ERROR("[HAL-Linux] socket(AF_NETLINK) failed: %s", strerror(errno));
+        return -1;
+    }
+
+    struct sockaddr_nl sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.nl_family = AF_NETLINK;
+
+    if (sendto(sock, &req, req.nlh.nlmsg_len, 0, (struct sockaddr*)&sa, sizeof(sa)) < 0) {
+        LOG_ERROR("[HAL-Linux] sendto RTM_NEWROUTE failed: %s", strerror(errno));
+        close(sock);
+        return -1;
+    }
+
+    close(sock);
     return 0;
 }
 
 int hal_mpls_remove(uint32_t in_label) {
     LOG_INFO("[HAL-Linux] Removing MPLS: in=%u", in_label);
-    /* Real implementation would use RTM_DELROUTE with AF_MPLS */
+    
+    if (in_label == 0) {
+        LOG_WARN("[HAL-Linux] Skipping MPLS remove for in_label 0");
+        return 0;
+    }
+
+    struct {
+        struct nlmsghdr nlh;
+        struct rtmsg rtm;
+        char buf[256];
+    } req;
+
+    memset(&req, 0, sizeof(req));
+    req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+    req.nlh.nlmsg_flags = NLM_F_REQUEST;
+    req.nlh.nlmsg_type = RTM_DELROUTE;
+    req.nlh.nlmsg_seq = 3;
+    req.nlh.nlmsg_pid = getpid();
+    
+    req.rtm.rtm_family = AF_MPLS;
+    req.rtm.rtm_dst_len = 20;
+
+    uint32_t label_dst = htonl(in_label << 12 | 1 << 8);
+    addattr_l(&req.nlh, sizeof(req), RTA_DST, &label_dst, sizeof(label_dst));
+
+    int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+    if (sock < 0) return -1;
+
+    struct sockaddr_nl sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.nl_family = AF_NETLINK;
+
+    if (sendto(sock, &req, req.nlh.nlmsg_len, 0, (struct sockaddr*)&sa, sizeof(sa)) < 0) {
+        LOG_ERROR("[HAL-Linux] sendto RTM_DELROUTE failed: %s", strerror(errno));
+    }
+    close(sock);
     return 0;
 }
