@@ -224,7 +224,7 @@ int hal_netlink_get_egress_if(struct in_addr* dest, struct in_addr* next_hop) {
 int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex,
                      struct in_addr* next_hop) {
     LOG_INFO("[HAL-Linux] Installing MPLS: in=%u, out=%u, if=%d, next_hop=%s",
-             in_label, out_label, out_ifindex, inet_ntoa(*next_hop));
+             in_label, out_label, out_ifindex, next_hop ? inet_ntoa(*next_hop) : "NULL");
     /* Real implementation would use RTM_NEWROUTE with AF_MPLS */
     return 0;
 }
