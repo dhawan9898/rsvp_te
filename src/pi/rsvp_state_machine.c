@@ -1,3 +1,9 @@
+/**
+ * @file rsvp_state_machine.c
+ * @brief RSVP State Machine Implementation.
+ * @details Handles the processing of RSVP messages, state creation/deletion, timer management, and hardware programming.
+ */
+
 #include "rsvp_state_machine.h"
 
 #include <arpa/inet.h>
@@ -604,6 +610,11 @@ static void handle_resv_err(struct rsvp_message_info* info) {
     }
 }
 
+/**
+ * @brief Main entry point for processing an incoming RSVP message.
+ * @details Dispatches the parsed message to the appropriate handler based on its type.
+ * @param [in] info Pointer to the parsed RSVP message information.
+ */
 void rsvp_handle_message(struct rsvp_message_info* info) {
     switch (info->common_hdr->msg_type) {
         case RSVP_MSG_PATH:
@@ -955,6 +966,14 @@ static void send_path_downstream(struct rsvp_psb* psb) {
     rsvp_send_packet(&source_addr, &dest_addr, buf, len, true);
 }
 
+/**
+ * @brief Initiate a new RSVP PATH message to establish an LSP.
+ * @details Creates a new Path State Block (PSB) at the ingress node and triggers a PATH message downstream.
+ * @param [in] src Source (ingress) IPv4 address.
+ * @param [in] dest Destination (egress) IPv4 address.
+ * @param [in] tunnel_id Tunnel ID for the new LSP.
+ * @param [in] lsp_name Optional name for the LSP.
+ */
 void rsvp_initiate_path(struct in_addr* src, struct in_addr* dest,
                         uint16_t tunnel_id, const char* lsp_name) {
     char src_str[INET_ADDRSTRLEN], dest_str[INET_ADDRSTRLEN];
@@ -997,6 +1016,11 @@ void rsvp_initiate_path(struct in_addr* src, struct in_addr* dest,
     send_path_downstream(psb);
 }
 
+/**
+ * @brief Teardown an existing LSP.
+ * @details Looks up the LSP by tunnel ID and initiates a PathTear message.
+ * @param [in] tunnel_id Tunnel ID of the LSP to teardown.
+ */
 void rsvp_teardown_path(uint16_t tunnel_id) {
     struct rsvp_psb* psb = rsvp_psb_find_by_id(tunnel_id);
     if (!psb) {

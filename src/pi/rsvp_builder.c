@@ -1,3 +1,9 @@
+/**
+ * @file rsvp_builder.c
+ * @brief RSVP Message Builder Implementation.
+ * @details Implements the functions to incrementally construct an RSVP-TE message, manage its buffer, and calculate the checksum.
+ */
+
 #include "rsvp_builder.h"
 #include "common/rsvp_log.h"
 #include "common/rsvp_error.h"
@@ -8,11 +14,14 @@
 void rsvp_builder_init(struct rsvp_builder* b, uint8_t* buffer, size_t size,
                        uint8_t msg_type) {
     LOG_DEBUG("Builder: Initializing for Message Type %d (Buffer Size: %zu)", msg_type, size);
+    
+    /* Initialize builder structure fields */
     b->buffer = buffer;
     b->size = size;
     b->offset = sizeof(struct rsvp_common_hdr);
     b->hdr = (struct rsvp_common_hdr*)buffer;
 
+    /* Zero out the buffer and set the common header fields */
     memset(buffer, 0, size);
     b->hdr->ver_flags = (RSVP_VERSION << 4);
     b->hdr->msg_type = msg_type;
@@ -21,23 +30,28 @@ void rsvp_builder_init(struct rsvp_builder* b, uint8_t* buffer, size_t size,
 
 int rsvp_builder_add_obj(struct rsvp_builder* b, uint8_t class_num,
                          uint8_t c_type, void* data, size_t data_len) {
+    /* Calculate the total object length including the RSVP object header */
     size_t obj_total_len = sizeof(struct rsvp_obj_hdr) + data_len;
+    /* Ensure the length is 4-byte aligned as required by RFC 2205 */
     size_t aligned_len = RSVP_ALIGN(obj_total_len);
 
     LOG_DEBUG("Builder: Adding Object [Class: %d, C-Type: %d, DataLen: %zu, Aligned: %zu]",
               class_num, c_type, data_len, aligned_len);
 
+    /* Verify that the new object fits within the remaining buffer space */
     if (b->offset + aligned_len > b->size) {
         LOG_ERROR("Builder: Buffer overflow when adding object class %d", class_num);
         return -1;
     }
 
+    /* Populate the RSVP object header */
     struct rsvp_obj_hdr* obj_hdr =
         (struct rsvp_obj_hdr*)(b->buffer + b->offset);
     obj_hdr->length = htons(aligned_len);
     obj_hdr->class_num = class_num;
     obj_hdr->c_type = c_type;
 
+    /* Copy the actual object payload into the buffer */
     memcpy(b->buffer + b->offset + sizeof(struct rsvp_obj_hdr), data, data_len);
 
     b->offset += aligned_len;
@@ -71,6 +85,7 @@ int rsvp_builder_add_session_attribute(struct rsvp_builder* b,
     uint8_t buf[300] = {0};
     struct rsvp_session_attribute* attr = (struct rsvp_session_attribute*)buf;
 
+    /* Validate and optionally truncate the session name length */
     size_t name_len_full = name ? strlen(name) : 0;
     uint8_t name_len = (name_len_full > 255) ? 255 : (uint8_t)name_len_full;
 
@@ -136,6 +151,12 @@ union net_un {
     float f;
 };
 
+/**
+ * @brief Convert a float to network byte order.
+ * @details Reinterprets the float as a uint32_t and applies htonl.
+ * @param [in] value The float value to convert.
+ * @return The network-byte-order representation of the float.
+ */
 static uint32_t float_to_net(float value) {
     union net_un temp;
     temp.f = value;
@@ -146,6 +167,8 @@ int rsvp_builder_add_tspec(struct rsvp_builder* b,
                            struct rsvp_sender_tspec* tspec) {
     struct rsvp_sender_tspec wire_tspec;
     memcpy(&wire_tspec, tspec, sizeof(wire_tspec));
+    
+    /* Convert TSpec fields to network byte order */
     wire_tspec.length = htons((sizeof(wire_tspec) / 4) - 1);
     wire_tspec.svc_length = htons(tspec->svc_length);
     wire_tspec.param_length = htons(tspec->param_length);
@@ -168,6 +191,8 @@ int rsvp_builder_add_flowspec(struct rsvp_builder* b,
                            struct rsvp_sender_tspec* tspec) {
     struct rsvp_sender_tspec wire_tspec;
     memcpy(&wire_tspec, tspec, sizeof(wire_tspec));
+    
+    /* Convert Flowspec fields to network byte order (shares TSpec structure) */
     wire_tspec.length = htons((sizeof(wire_tspec) / 4) - 1);
     wire_tspec.svc_length = htons(tspec->svc_length);
     wire_tspec.param_length = htons(tspec->param_length);
@@ -224,26 +249,32 @@ uint16_t rsvp_checksum(const void* buf, size_t len) {
     const uint16_t* ptr = (const uint16_t*)buf;
     uint32_t sum = 0;
 
+    /* Compute the 16-bit one's complement sum */
     while (len > 1) {
         sum += ntohs(*ptr++);
         len -= 2;
     }
 
+    /* Add left-over byte, if any */
     if (len > 0) {
         sum += (*(const uint8_t*)ptr) << 8;
     }
 
+    /* Fold 32-bit sum to 16 bits */
     while (sum >> 16) {
         sum = (sum & 0xffff) + (sum >> 16);
     }
+    
+    /* Return the one's complement of the sum */
     return htons((uint16_t)(~sum));
 }
 
 size_t rsvp_builder_finalize(struct rsvp_builder* b) {
+    /* Update message length in the header */
     b->hdr->length = htons(b->offset);
     b->hdr->checksum = 0;
 
-    /* Checksum is calculated over the entire RSVP message */
+    /* Checksum is calculated over the entire RSVP message including header and all objects */
     b->hdr->checksum = rsvp_checksum((uint16_t*)b->buffer, b->offset);
 
     LOG_DEBUG("Builder: Finalized message [Type: %d, Length: %d, Checksum: 0x%04x]",

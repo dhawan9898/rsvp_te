@@ -1,3 +1,9 @@
+/**
+ * @file rsvp_parser.c
+ * @brief RSVP Packet Parser Implementation.
+ * @details Implements the logic to parse raw RSVP packets, validate checksums, and extract objects according to RFC 2205.
+ */
+
 #include "rsvp_parser.h"
 #include "common/rsvp_log.h"
 #include <arpa/inet.h>
@@ -12,6 +18,7 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
                                struct rsvp_message_info* info) {
     LOG_DEBUG("Parser: Starting RSVP packet parsing (Length: %zu)", len);
 
+    /* Validate the overall length is at least the size of an IP header */
     if (len < sizeof(struct iphdr)) {
         LOG_WARN("Parser: Packet too small for IP header");
         return RSVP_ERR_BUFFER_TOO_SMALL;
@@ -27,6 +34,7 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
     info->src_ip.s_addr = ip->saddr;
     info->dst_ip.s_addr = ip->daddr;
 
+    /* Validate the length contains both IP and RSVP headers */
     if (len < ip_hdr_len + sizeof(struct rsvp_common_hdr)) {
         LOG_WARN("Parser: Packet too small for RSVP common header");
         return RSVP_ERR_BUFFER_TOO_SMALL;
@@ -60,7 +68,7 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
         return RSVP_ERR_INVALID_PARAM;
     }
 
-    /* Verify checksum */
+    /* Verify checksum over the entire RSVP message */
     uint16_t received_checksum = rsvp_hdr->checksum;
     if (received_checksum != 0) {
         /* RSVP checksum is calculated over the entire RSVP message with checksum field = 0 */
@@ -81,6 +89,7 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
     const uint8_t* obj_ptr = info->payload;
     size_t remaining = info->payload_len;
 
+    /* Loop through the remaining payload and extract supported objects */
     while (remaining >= sizeof(struct rsvp_obj_hdr)) {
         const struct rsvp_obj_hdr* obj_hdr = (const struct rsvp_obj_hdr*)obj_ptr;
         size_t obj_len = ntohs(obj_hdr->length);
@@ -226,6 +235,7 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
                 break;
 
             default:
+                /* Handle unrecognized objects according to RFC 2205 class number rules */
                 if (obj_hdr->class_num < 128) {
                     LOG_WARN("Parser: Unhandled object class %d (Class-Num < 128). Rejecting message.", obj_hdr->class_num);
                     return RSVP_ERR_UNKNOWN_OBJECT_CLASS;

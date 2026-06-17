@@ -1,3 +1,9 @@
+/**
+ * @file rsvp_parser.h
+ * @brief RSVP Packet Parser.
+ * @details Extracts and validates RSVP objects from raw packets and populates the message info structure.
+ */
+
 #ifndef RSVP_PARSER_H
 #define RSVP_PARSER_H
 
@@ -8,17 +14,18 @@
 #include "rsvp_state.h"
 
 /**
- * Parsed RSVP Message Info
+ * @brief Parsed RSVP Message Info
+ * @details Contains pointers to the parsed objects within the received packet buffer.
  */
 struct rsvp_message_info {
-    struct rsvp_common_hdr* common_hdr;
-    struct in_addr src_ip;
-    struct in_addr dst_ip;
-    struct rsvp_path_key key;
-    uint8_t* payload;
-    size_t payload_len;
+    struct rsvp_common_hdr* common_hdr; /**< Pointer to the common header */
+    struct in_addr src_ip;              /**< Source IP address from the IP header */
+    struct in_addr dst_ip;              /**< Destination IP address from the IP header */
+    struct rsvp_path_key key;           /**< Parsed path state key */
+    uint8_t* payload;                   /**< Pointer to the start of the RSVP object payload */
+    size_t payload_len;                 /**< Length of the RSVP payload */
 
-    /* Objects of interest */
+    /* Pointers to objects of interest (NULL if not present) */
     struct rsvp_session_ipv4* sess_v4;
     struct rsvp_session_ipv6* sess_v6;
     struct rsvp_hop_ipv4* hop_v4;
@@ -38,12 +45,16 @@ struct rsvp_message_info {
     struct rsvp_label_request* label_req;
     struct rsvp_session_attribute* sess_attr;
     struct rsvp_session_attribute_ra* sess_attr_ra;
-    char lsp_name[256];
+    char lsp_name[256];                 /**< Extracted LSP tunnel name */
 };
 
 /**
- * Parse a raw RSVP packet (including IP header if present).
- * Returns RSVP_SUCCESS on success, or an rsvp_error_t code on parse error.
+ * @brief Parse a raw RSVP packet.
+ * @details Validates the IP and RSVP headers, verifies the checksum, and extracts known objects into the info structure.
+ * @param [in] buffer Pointer to the raw packet buffer (starting with the IP header).
+ * @param [in] len Total length of the received packet.
+ * @param [out] info Pointer to the structure to populate with parsed object data.
+ * @return RSVP_SUCCESS on success, or an rsvp_error_t code on parse error.
  */
 rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
                                struct rsvp_message_info* info);

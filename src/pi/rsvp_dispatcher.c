@@ -1,3 +1,9 @@
+/**
+ * @file rsvp_dispatcher.c
+ * @brief Implementation of the RSVP message dispatcher.
+ * @details Handles the main event loop for the RSVP daemon, multiplexing between CLI input, raw RSVP sockets, Netlink sockets, and timers.
+ */
+
 #include "rsvp_dispatcher.h"
 
 #include <arpa/inet.h>
@@ -26,12 +32,15 @@ static int rsvp_raw_sock = -1;
 
 int rsvp_dispatcher_init(void) {
     int one = 1;
+    
+    /* Create a raw socket to send and receive RSVP (protocol 46) packets */
     rsvp_raw_sock = socket(AF_INET, SOCK_RAW, RSVP_PROTOCOL);
     if (rsvp_raw_sock < 0) {
         LOG_ERROR("Failed to create raw RSVP socket: %s", strerror(errno));
         return -1;
     }
 
+    /* Instruct the kernel that we will provide the IP header */
     if (setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) <
         0) {
         LOG_ERROR("Failed to set IP_HDRINCL: %s", strerror(errno));
@@ -40,6 +49,7 @@ int rsvp_dispatcher_init(void) {
         return -1;
     }
 
+    /* Request that the kernel passes packets with the IP Router Alert Option to us */
     if (setsockopt(rsvp_raw_sock, IPPROTO_IP, IP_ROUTER_ALERT, &one,
                    sizeof(one)) < 0) {
         LOG_ERROR("Failed to set IP_ROUTER_ALERT: %s", strerror(errno));
@@ -66,22 +76,22 @@ void rsvp_dispatcher_run(void) {
     while (1) {
         nfds = 0;
 
-        /* STDIN for CLI */
+        /* Add STDIN for CLI processing */
         fds[nfds].fd = STDIN_FILENO;
         fds[nfds].events = POLLIN;
         nfds++;
 
-        /* Raw RSVP Socket */
+        /* Add Raw RSVP Socket for incoming packets */
         fds[nfds].fd = rsvp_raw_sock;
         fds[nfds].events = POLLIN;
         nfds++;
 
-        /* Netlink Socket */
+        /* Add Netlink Socket for interface and route updates */
         fds[nfds].fd = hal_netlink_get_fd();
         fds[nfds].events = POLLIN;
         nfds++;
 
-        /* Timer fds */
+        /* Add Timer file descriptors */
         int t_count = rsvp_timer_get_fds(timer_fds, MAX_FDS - nfds);
         for (int i = 0; i < t_count; i++) {
             fds[nfds].fd = timer_fds[i];
@@ -89,6 +99,7 @@ void rsvp_dispatcher_run(void) {
             nfds++;
         }
 
+        /* Block and wait for events on the configured file descriptors */
         int ret = poll(fds, nfds, -1);
         if (ret < 0) {
             if (errno == EINTR) continue;
@@ -96,6 +107,7 @@ void rsvp_dispatcher_run(void) {
             break;
         }
 
+        /* Process triggered events */
         for (int i = 0; i < nfds; i++) {
             if (fds[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {
                 LOG_ERROR("poll event error on fd %d: revents=0x%x", fds[i].fd,
@@ -105,8 +117,10 @@ void rsvp_dispatcher_run(void) {
 
             if (fds[i].revents & POLLIN) {
                 if (fds[i].fd == STDIN_FILENO) {
+                    /* Handle command line input */
                     rsvp_cli_handle_input(STDIN_FILENO);
                 } else if (fds[i].fd == rsvp_raw_sock) {
+                    /* Read incoming RSVP packet */
                     uint8_t buffer[MAX_RSVP_PACKET_SIZE];
                     struct sockaddr_in src_addr;
                     socklen_t addr_len = sizeof(src_addr);
@@ -116,6 +130,7 @@ void rsvp_dispatcher_run(void) {
                         recvfrom(rsvp_raw_sock, buffer, sizeof(buffer), 0,
                                  (struct sockaddr*)&src_addr, &addr_len);
                     if (bytes_read > 0) {
+                        /* Check for local loopback packets to ignore */
                         if (bytes_read >= (ssize_t)sizeof(struct iphdr)) {
                             struct iphdr* ip = (struct iphdr*)buffer;
                             struct in_addr packet_src;
@@ -132,6 +147,8 @@ void rsvp_dispatcher_run(void) {
                         LOG_DEBUG("Dispatcher: Received %zd bytes from %s", bytes_read, src_str);
 
                         memset(&info, 0, sizeof(info));
+                        
+                        /* Parse and handle the RSVP message */
                         rsvp_error_t err = rsvp_parse_packet(buffer, bytes_read, &info);
                         if (err == RSVP_SUCCESS) {
                             rsvp_handle_message(&info);
@@ -142,6 +159,7 @@ void rsvp_dispatcher_run(void) {
                         LOG_ERROR("recvfrom: %s", strerror(errno));
                     }
                 } else if (fds[i].fd == hal_netlink_get_fd()) {
+                    /* Process netlink events (link/address changes) */
                     hal_netlink_process();
                 } else {
                     /* Must be a timer fd */
@@ -169,6 +187,7 @@ rsvp_error_t rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t
 
     memset(packet, 0, total_len);
 
+    /* Construct the IP Header */
     iph->ihl = 5 + (optlen / 4);
     iph->version = 4;
     iph->tos = 0;
@@ -183,22 +202,25 @@ rsvp_error_t rsvp_send_packet(struct in_addr* src, struct in_addr* dest, uint8_t
     iph->protocol = RSVP_PROTOCOL;
     iph->saddr = src->s_addr;
     iph->daddr = dest->s_addr;
-    iph->check = 0; /* Kernel will fill */
+    iph->check = 0;
 
+    /* Append the Router Alert Option if requested */
     if (use_rao) {
         uint8_t* options = packet + sizeof(struct iphdr);
-        options[0] = 148; /* RFC 2113: Router Alert Option */
-        options[1] = 4;
-        options[2] = 0;
+        options[0] = 148; /* IPOPT_RA */
+        options[1] = 4;   /* length */
+        options[2] = 0;   /* value = 0 */
         options[3] = 0;
     }
 
+    /* Copy the RSVP message payload */
     memcpy(packet + (iph->ihl * 4), buffer, len);
 
     memset(&dest_addr, 0, sizeof(dest_addr));
     dest_addr.sin_family = AF_INET;
     dest_addr.sin_addr = *dest;
 
+    /* Transmit the raw IP packet */
     ssize_t bytes_sent =
         sendto(rsvp_raw_sock, packet, total_len, 0,
                (struct sockaddr*)&dest_addr, sizeof(dest_addr));

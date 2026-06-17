@@ -1,3 +1,9 @@
+/**
+ * @file rsvp_timers.c
+ * @brief RSVP Timer Management Implementation.
+ * @details Uses a wheel timer library and a pipe to integrate asynchronous timer expirations into the main poll loop.
+ */
+
 #include "rsvp_timers.h"
 
 #include <errno.h>
@@ -11,6 +17,11 @@
 static timer_wheel_t* global_wheel = NULL;
 static int timer_pipe[2] = {-1, -1};
 
+/**
+ * @brief Internal callback executed by the wheel timer thread.
+ * @details Marks the timer as inactive and writes a pointer to the timer into the communication pipe.
+ * @param [in] arg Pointer to the rsvp_timer_t structure.
+ */
 static void internal_wheel_cb(void* arg) {
     rsvp_timer_t* timer = (rsvp_timer_t*)arg;
     timer->active = false;
@@ -21,12 +32,13 @@ static void internal_wheel_cb(void* arg) {
 }
 
 void rsvp_timer_init(void) {
+    /* Create an unnamed pipe for IPC between timer threads and the main loop */
     if (pipe(timer_pipe) < 0) {
         LOG_ERROR("Failed to create timer pipe: %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
     
-    /* Make the read side non-blocking */
+    /* Make the read side non-blocking to prevent the main loop from stalling */
     int flags = fcntl(timer_pipe[0], F_GETFL, 0);
     fcntl(timer_pipe[0], F_SETFL, flags | O_NONBLOCK);
 
@@ -83,6 +95,7 @@ void rsvp_timer_handle_exp(int fd) {
     if (fd != timer_pipe[0]) return;
 
     rsvp_timer_t* timer;
+    /* Read all expired timer pointers from the pipe and execute their user callbacks */
     while (read(fd, &timer, sizeof(timer)) == sizeof(timer)) {
         if (timer && timer->cb) {
             timer->cb(timer->arg);

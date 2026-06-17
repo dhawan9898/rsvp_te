@@ -1,3 +1,9 @@
+/**
+ * @file rsvp_state_db.c
+ * @brief RSVP State Database Implementation.
+ * @details Implements a simple hash table to store, retrieve, and delete PSBs and RSBs efficiently based on session parameters.
+ */
+
 #include "rsvp_state_db.h"
 #include "common/rsvp_log.h"
 #include <stdlib.h>
@@ -6,9 +12,16 @@
 
 #define HASH_SIZE 1024
 
+/* Hash tables for state blocks */
 static struct rsvp_psb* psb_table[HASH_SIZE];
 static struct rsvp_rsb* rsb_table[HASH_SIZE];
 
+/**
+ * @brief Compute the hash for a given RSVP path key.
+ * @details Uses a simple polynomial rolling hash function over the critical fields of the session and sender IPv4 structures.
+ * @param [in] key Pointer to the path key.
+ * @return The computed hash index (0 to HASH_SIZE - 1).
+ */
 static uint32_t rsvp_key_hash(struct rsvp_path_key* key) {
     uint32_t hash = 0;
     hash = hash * 31 + key->session.dest_addr.s_addr;
@@ -28,6 +41,8 @@ void rsvp_state_db_init(void) {
 struct rsvp_psb* rsvp_psb_find(struct rsvp_path_key* key) {
     uint32_t h = rsvp_key_hash(key);
     struct rsvp_psb* psb = psb_table[h];
+    
+    /* Traverse the linked list at the hashed bucket */
     while (psb) {
         if (memcmp(&psb->key, key, sizeof(struct rsvp_path_key)) == 0) {
             return psb;
@@ -38,6 +53,7 @@ struct rsvp_psb* rsvp_psb_find(struct rsvp_path_key* key) {
 }
 
 struct rsvp_psb* rsvp_psb_find_by_id(uint16_t tunnel_id) {
+    /* Perform a linear scan since the hash function uses full path key */
     for (int i = 0; i < HASH_SIZE; i++) {
         struct rsvp_psb* psb = psb_table[i];
         while (psb) {
@@ -65,6 +81,7 @@ struct rsvp_psb* rsvp_psb_create(struct rsvp_path_key* key) {
         return NULL;
     }
 
+    /* Copy the key and insert at the head of the hash bucket */
     memcpy(&psb->key, key, sizeof(struct rsvp_path_key));
     uint32_t h = rsvp_key_hash(key);
     psb->next_hash = psb_table[h];
@@ -86,6 +103,7 @@ void rsvp_psb_delete(struct rsvp_psb* psb) {
     struct rsvp_psb** prev = &psb_table[h];
     struct rsvp_psb* curr = psb_table[h];
 
+    /* Find and remove the PSB from the linked list */
     while (curr) {
         if (curr == psb) {
             *prev = curr->next_hash;
@@ -101,6 +119,8 @@ void rsvp_psb_delete(struct rsvp_psb* psb) {
 struct rsvp_rsb* rsvp_rsb_find(struct rsvp_path_key* key) {
     uint32_t h = rsvp_key_hash(key);
     struct rsvp_rsb* rsb = rsb_table[h];
+    
+    /* Traverse the linked list at the hashed bucket */
     while (rsb) {
         if (memcmp(&rsb->key, key, sizeof(struct rsvp_path_key)) == 0) {
             return rsb;
@@ -125,6 +145,7 @@ struct rsvp_rsb* rsvp_rsb_create(struct rsvp_path_key* key) {
         return NULL;
     }
 
+    /* Copy the key and insert at the head of the hash bucket */
     memcpy(&rsb->key, key, sizeof(struct rsvp_path_key));
     uint32_t h = rsvp_key_hash(key);
     rsb->next_hash = rsb_table[h];
@@ -146,6 +167,7 @@ void rsvp_rsb_delete(struct rsvp_rsb* rsb) {
     struct rsvp_rsb** prev = &rsb_table[h];
     struct rsvp_rsb* curr = rsb_table[h];
 
+    /* Find and remove the RSB from the linked list */
     while (curr) {
         if (curr == rsb) {
             *prev = curr->next_hash;

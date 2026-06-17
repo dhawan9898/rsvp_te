@@ -1,3 +1,9 @@
+/**
+ * @file rsvp_cli.c
+ * @brief Command Line Interface (CLI) Implementation for RSVP-TE.
+ * @details Implements the CLI loop and command handlers to interact with the RSVP-TE state machine and debugging tools.
+ */
+
 #include "rsvp_cli.h"
 
 #include <stdio.h>
@@ -11,6 +17,10 @@
 #include "rsvp_state_db.h"
 #include "rsvp_state_machine.h"
 
+/**
+ * @brief Print the CLI prompt to standard output.
+ * @details Outputs the "rsvp-te>" prompt and flushes the stdout buffer.
+ */
 static void rsvp_cli_print_prompt(void) {
     printf("rsvp-te> ");
     fflush(stdout);
@@ -18,14 +28,17 @@ static void rsvp_cli_print_prompt(void) {
 
 void rsvp_cli_handle_input(int fd) {
     char buf[256];
+    
+    /* Read user input from the specified file descriptor */
     ssize_t n = read(fd, buf, sizeof(buf) - 1);
     if (n <= 0) return;
 
     buf[n] = '\0';
     
-    // Strip trailing newline
+    /* Strip trailing newline */
     if (buf[n - 1] == '\n') buf[n - 1] = '\0';
 
+    /* Process the command based on string matching */
     if (strcmp(buf, "show psb") == 0) {
         rsvp_psb_dump();
     } else if (strcmp(buf, "show rsb") == 0) {
@@ -40,9 +53,10 @@ void rsvp_cli_handle_input(int fd) {
             printf("Usage: delete tunnel <tunnel_id>\n");
         }
     } else if (strncmp(buf, "setup tunnel ", 13) == 0) {
-        // format: setup tunnel <src_ip> <dest_ip> <tunnel_id> <name>
+        /* Format: setup tunnel <src_ip> <dest_ip> <tunnel_id> <name> */
         char src_str[32], dest_str[32], name[32];
         uint32_t tunnel_id = 0;
+        
         if (sscanf(buf + 13, "%31s %31s %u %31s", src_str, dest_str, &tunnel_id, name) == 4) {
             struct in_addr src, dest;
             if (inet_pton(AF_INET, src_str, &src) && inet_pton(AF_INET, dest_str, &dest)) {
