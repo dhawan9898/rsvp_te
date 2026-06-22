@@ -16,6 +16,12 @@
 void rsvp_state_db_init(void);
 
 /**
+ * @brief Cleanup the state database.
+ * @details Frees all allocated memory in the state blocks.
+ */
+void rsvp_state_db_cleanup(void);
+
+/**
  * @brief Find a Path State Block (PSB) by its key.
  * @param [in] key Pointer to the path key.
  * @return Pointer to the matching PSB, or NULL if not found.

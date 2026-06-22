@@ -41,6 +41,21 @@ void rsvp_state_db_init(void) {
     memset(bsb_table, 0, sizeof(bsb_table));
 }
 
+void rsvp_state_db_cleanup(void) {
+    LOG_INFO("Cleaning up RSVP State Database");
+    for (int i = 0; i < HASH_SIZE; i++) {
+        while (psb_table[i]) {
+            rsvp_psb_delete(psb_table[i]);
+        }
+        while (rsb_table[i]) {
+            rsvp_rsb_delete(rsb_table[i]);
+        }
+        while (bsb_table[i]) {
+            rsvp_bsb_delete(bsb_table[i]);
+        }
+    }
+}
+
 struct rsvp_psb* rsvp_psb_find(struct rsvp_path_key* key) {
     uint32_t h = rsvp_key_hash(key);
     struct rsvp_psb* psb = psb_table[h];

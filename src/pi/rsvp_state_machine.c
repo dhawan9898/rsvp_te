@@ -245,8 +245,7 @@ static void handle_path_message(struct rsvp_message_info* info) {
             struct rsvp_ero_ipv4_subobj* sub = (struct rsvp_ero_ipv4_subobj*)ptr;
             if (sub->length < 2 || sub->length > rem) break;
 
-            /* Currently we only support IPv4 sub-objects (Type 1) */
-            if ((sub->type & 0x7F) == RSVP_ERO_IPV4) {
+            if ((sub->type & 0x7F) == RSVP_ERO_IPV4 && sub->length == sizeof(struct rsvp_ero_ipv4_subobj)) {
                 memcpy(&psb->ero[count], ptr, sizeof(struct rsvp_ero_ipv4_subobj));
                 count++;
             } else {
@@ -269,7 +268,7 @@ static void handle_path_message(struct rsvp_message_info* info) {
             struct rsvp_ero_ipv4_subobj* sub = (struct rsvp_ero_ipv4_subobj*)ptr;
             if (sub->length < 2 || sub->length > rem) break;
 
-            if ((sub->type & 0x7F) == RSVP_ERO_IPV4) {
+            if ((sub->type & 0x7F) == RSVP_ERO_IPV4 && sub->length == sizeof(struct rsvp_ero_ipv4_subobj)) {
                 memcpy(&psb->rro[count], ptr, sizeof(struct rsvp_ero_ipv4_subobj));
                 count++;
             }
@@ -585,6 +584,8 @@ static void handle_resv_message(struct rsvp_message_info* info) {
                     rsb->label_in = label_mgr_alloc();
                     if (rsb->label_in == 0) {
                         LOG_ERROR("  - TRANSIT: Label allocation FAILED. Sending ResvErr.");
+                        /* Cleanup incomplete RSB state on error */
+                        if (is_new) rsvp_rsb_cleanup(rsb, false);
                         /* Error Code 01: Admission Control Failure */
                         send_resv_err(info, RSVP_PROTO_ERR_ADMISSION_CONTROL, 0);
                         return;
@@ -762,13 +763,13 @@ static void handle_resv_err(struct rsvp_message_info* info) {
                  info->error_spec->error_code, info->error_spec->error_value, node_str);
 
         /* RFC 2209: Blockade Trigger */
-        if (info->error_spec->error_code == RSVP_PROTO_ERR_ADMISSION_CONTROL) {
-            LOG_INFO("  - Admission Control Failure detected. Checking for Blockade creation...");
+        if (info->error_spec->error_code == RSVP_PROTO_ERR_ADMISSION_CONTROL && info->flowspec) {
+            LOG_INFO("  - Admission Control Failure detected with Flowspec. Checking for Blockade creation...");
             struct rsvp_bsb* bsb = rsvp_bsb_find(&info->key);
             if (!bsb) {
                 bsb = rsvp_bsb_create(&info->key);
             }
-            if (bsb && info->flowspec) {
+            if (bsb) {
                 tspec_copy_and_ntoh(&bsb->flowspec_qb, info->flowspec);
                 /* Start blockade timer Tb (e.g., 3 * refresh interval) */
                 uint32_t tb_ms = 90000;
