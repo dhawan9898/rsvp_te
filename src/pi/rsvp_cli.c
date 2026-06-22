@@ -46,11 +46,11 @@ void rsvp_cli_handle_input(int fd) {
     } else if (strcmp(buf, "show mpls routes") == 0) {
         hal_mpls_dump();
     } else if (strncmp(buf, "delete tunnel ", 14) == 0) {
-        uint32_t tunnel_id = 0;
-        if (sscanf(buf + 14, "%u", &tunnel_id) == 1) {
-            rsvp_teardown_path((uint16_t)tunnel_id);
+        uint32_t tunnel_id = 0, lsp_id = 0;
+        if (sscanf(buf + 14, "%u %u", &tunnel_id, &lsp_id) == 2) {
+            rsvp_teardown_path((uint16_t)tunnel_id, (uint16_t)lsp_id);
         } else {
-            printf("Usage: delete tunnel <tunnel_id>\n");
+            printf("Usage: delete tunnel <tunnel_id> <lsp_id>\n");
         }
     } else if (strncmp(buf, "setup tunnel ", 13) == 0) {
         /* Format: setup tunnel <src_ip> <dest_ip> <tunnel_id> <name> */
@@ -75,7 +75,7 @@ void rsvp_cli_handle_input(int fd) {
         printf("  show rsb\n");
         printf("  show mpls routes\n");
         printf("  setup tunnel <src_ip> <dest_ip> <tunnel_id> <name>\n");
-        printf("  delete tunnel <tunnel_id>\n");
+        printf("  delete tunnel <tunnel_id> <lsp_id>\n");
     }
 
     rsvp_cli_print_prompt();

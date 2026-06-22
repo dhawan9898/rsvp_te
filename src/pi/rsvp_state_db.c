@@ -55,12 +55,13 @@ struct rsvp_psb* rsvp_psb_find(struct rsvp_path_key* key) {
     return NULL;
 }
 
-struct rsvp_psb* rsvp_psb_find_by_id(uint16_t tunnel_id) {
+struct rsvp_psb* rsvp_psb_find_by_id(uint16_t tunnel_id, uint16_t lsp_id) {
     /* Perform a linear scan since the hash function uses full path key */
     for (int i = 0; i < HASH_SIZE; i++) {
         struct rsvp_psb* psb = psb_table[i];
         while (psb) {
-            if (ntohs(psb->key.session.tunnel_id) == tunnel_id) {
+            if (ntohs(psb->key.session.tunnel_id) == tunnel_id &&
+                ntohs(psb->key.sender.lsp_id) == lsp_id) {
                 return psb;
             }
             psb = psb->next_hash;

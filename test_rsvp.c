@@ -34,14 +34,16 @@ bool hal_netlink_is_local_addr(struct in_addr* addr) {
 }
 
 int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex,
-                     struct in_addr* next_hop) {
-    printf("[TEST] MPLS Install: in=%u, out=%u, if=%d, next=%s\n", in_label,
-           out_label, out_ifindex, next_hop ? inet_ntoa(*next_hop) : "NULL");
+                     struct in_addr* next_hop, struct in_addr* dest_addr) {
+    printf("[TEST] MPLS Install: in=%u, out=%u, if=%d, next=%s, dest=%s\n", in_label,
+           out_label, out_ifindex, next_hop ? inet_ntoa(*next_hop) : "NULL",
+           dest_addr ? inet_ntoa(*dest_addr) : "NULL");
     return 0;
 }
 
-int hal_mpls_remove(uint32_t in_label) {
-    printf("[TEST] MPLS Remove: in=%u\n", in_label);
+int hal_mpls_remove(uint32_t in_label, struct in_addr* dest_addr) {
+    printf("[TEST] MPLS Remove: in=%u, dest=%s\n", in_label, 
+           dest_addr ? inet_ntoa(*dest_addr) : "NULL");
     return 0;
 }
 

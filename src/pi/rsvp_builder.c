@@ -153,14 +153,20 @@ union net_un {
 
 /**
  * @brief Convert a float to network byte order.
- * @details Reinterprets the float as a uint32_t and applies htonl.
- * @param [in] value The float value to convert.
- * @return The network-byte-order representation of the float.
  */
-static uint32_t float_to_net(float value) {
+uint32_t rsvp_float_to_net(float value) {
     union net_un temp;
     temp.f = value;
     return htonl(temp.val);
+}
+
+/**
+ * @brief Convert a network byte order uint32_t (representing float) to host float.
+ */
+float rsvp_net_to_float(uint32_t net_value) {
+    union net_un temp;
+    temp.val = ntohl(net_value);
+    return temp.f;
 }
 
 int rsvp_builder_add_tspec(struct rsvp_builder* b,
@@ -174,11 +180,11 @@ int rsvp_builder_add_tspec(struct rsvp_builder* b,
     wire_tspec.param_length = htons(tspec->param_length);
 
     uint32_t net_value;
-    net_value = float_to_net(tspec->token_bucket_rate);
+    net_value = rsvp_float_to_net(tspec->token_bucket_rate);
     memcpy(&wire_tspec.token_bucket_rate, &net_value, sizeof(net_value));
-    net_value = float_to_net(tspec->token_bucket_size);
+    net_value = rsvp_float_to_net(tspec->token_bucket_size);
     memcpy(&wire_tspec.token_bucket_size, &net_value, sizeof(net_value));
-    net_value = float_to_net(tspec->peak_data_rate);
+    net_value = rsvp_float_to_net(tspec->peak_data_rate);
     memcpy(&wire_tspec.peak_data_rate, &net_value, sizeof(net_value));
 
     wire_tspec.min_policed_unit = htonl(tspec->min_policed_unit);
@@ -198,11 +204,11 @@ int rsvp_builder_add_flowspec(struct rsvp_builder* b,
     wire_tspec.param_length = htons(tspec->param_length);
 
     uint32_t net_value;
-    net_value = float_to_net(tspec->token_bucket_rate);
+    net_value = rsvp_float_to_net(tspec->token_bucket_rate);
     memcpy(&wire_tspec.token_bucket_rate, &net_value, sizeof(net_value));
-    net_value = float_to_net(tspec->token_bucket_size);
+    net_value = rsvp_float_to_net(tspec->token_bucket_size);
     memcpy(&wire_tspec.token_bucket_size, &net_value, sizeof(net_value));
-    net_value = float_to_net(tspec->peak_data_rate);
+    net_value = rsvp_float_to_net(tspec->peak_data_rate);
     memcpy(&wire_tspec.peak_data_rate, &net_value, sizeof(net_value));
 
     wire_tspec.min_policed_unit = htonl(tspec->min_policed_unit);
@@ -267,6 +273,42 @@ uint16_t rsvp_checksum(const void* buf, size_t len) {
     
     /* Return the one's complement of the sum */
     return htons((uint16_t)(~sum));
+}
+
+int rsvp_checksum_verify(const void* buf, size_t len) {
+    if (len < 4) return -1;
+    
+    const uint16_t* ptr = (const uint16_t*)buf;
+    uint32_t sum = 0;
+    size_t remaining = len;
+
+    /* Sum everything except the checksum field at offset 2 */
+    /* First 2 bytes (ver_flags and msg_type) */
+    sum += ntohs(*ptr++);
+    remaining -= 2;
+
+    /* Skip checksum field */
+    ptr++;
+    remaining -= 2;
+
+    /* Sum the rest */
+    while (remaining > 1) {
+        sum += ntohs(*ptr++);
+        remaining -= 2;
+    }
+
+    if (remaining > 0) {
+        sum += (*(const uint8_t*)ptr) << 8;
+    }
+
+    while (sum >> 16) {
+        sum = (sum & 0xffff) + (sum >> 16);
+    }
+
+    uint16_t computed = htons((uint16_t)(~sum));
+    const struct rsvp_common_hdr* hdr = (const struct rsvp_common_hdr*)buf;
+    
+    return (hdr->checksum == computed) ? 0 : -1;
 }
 
 size_t rsvp_builder_finalize(struct rsvp_builder* b) {

@@ -24,7 +24,7 @@ static int timer_pipe[2] = {-1, -1};
  */
 static void internal_wheel_cb(void* arg) {
     rsvp_timer_t* timer = (rsvp_timer_t*)arg;
-    timer->active = false;
+    atomic_store(&timer->active, false);
     /* Write to pipe so it is processed in the main thread event loop */
     if (write(timer_pipe[1], &timer, sizeof(timer)) != sizeof(timer)) {
         LOG_ERROR("Failed to write to timer pipe: %s", strerror(errno));
@@ -55,27 +55,32 @@ void rsvp_timer_init(void) {
 void rsvp_timer_start(rsvp_timer_t* timer, rsvp_timer_type_t type, uint32_t timeout_ms, rsvp_timer_cb cb, void* arg) {
     if (!timer || !global_wheel) return;
     
+    /* Ensure the timer is stopped before re-starting to avoid corrupting the wheel lists */
+    if (atomic_load(&timer->active)) {
+        rsvp_timer_stop(timer);
+    }
+
     timer_node_init(&timer->node);
     timer->type = type;
     timer->cb = cb;
     timer->arg = arg;
-    timer->active = true;
+    atomic_store(&timer->active, true);
     
     if (timer_add(global_wheel, &timer->node, timeout_ms, internal_wheel_cb, timer) < 0) {
         LOG_ERROR("Failed to add timer to wheel");
-        timer->active = false;
+        atomic_store(&timer->active, false);
     }
 }
 
 void rsvp_timer_stop(rsvp_timer_t* timer) {
-    if (!timer || !global_wheel || !timer->active) return;
+    if (!timer || !global_wheel || !atomic_load(&timer->active)) return;
     
     timer_del(global_wheel, &timer->node);
-    timer->active = false;
+    atomic_store(&timer->active, false);
 }
 
 bool rsvp_timer_reset(rsvp_timer_t* timer, uint32_t timeout_ms) {
-    if (!timer || !global_wheel || !timer->active) return false;
+    if (!timer || !global_wheel || !atomic_load(&timer->active)) return false;
     
     if (timer_mod(global_wheel, &timer->node, timeout_ms) == 0) {
         return true;
