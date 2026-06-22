@@ -26,17 +26,21 @@ static void rsvp_cli_print_prompt(void) {
     fflush(stdout);
 }
 
-void rsvp_cli_handle_input(int fd) {
+int rsvp_cli_handle_input(int fd) {
     char buf[256];
     
     /* Read user input from the specified file descriptor */
     ssize_t n = read(fd, buf, sizeof(buf) - 1);
-    if (n <= 0) return;
+    if (n < 0) return -1;
+    if (n == 0) return -1; /* EOF */
 
     buf[n] = '\0';
     
-    /* Strip trailing newline */
-    if (buf[n - 1] == '\n') buf[n - 1] = '\0';
+    /* Strip trailing whitespace, carriage returns, and newlines */
+    while (n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == '\r' || buf[n - 1] == ' ' || buf[n - 1] == '\t')) {
+        buf[n - 1] = '\0';
+        n--;
+    }
 
     /* Process the command based on string matching */
     if (strcmp(buf, "show psb") == 0) {
@@ -68,6 +72,26 @@ void rsvp_cli_handle_input(int fd) {
         } else {
             printf("Usage: setup tunnel <src_ip> <dest_ip> <tunnel_id> <name>\n");
         }
+    } else if (strncmp(buf, "ping ", 5) == 0) {
+        /* Format: ping <src_ip> <dest_ip> <count> */
+        char src_str[32], dest_str[32];
+        int count = 0;
+        if (sscanf(buf + 5, "%31s %31s %d", src_str, dest_str, &count) == 3) {
+            if (count <= 0 || count > 100) {
+                printf("Invalid count. Must be between 1 and 100.\n");
+            } else {
+                char cmd[256];
+                snprintf(cmd, sizeof(cmd), "ping -I %s -c %d %s", src_str, count, dest_str);
+                printf("Running ping to verify labels: %s\n", cmd);
+                fflush(stdout);
+                int ret = system(cmd);
+                if (ret < 0) {
+                    printf("Failed to execute ping command.\n");
+                }
+            }
+        } else {
+            printf("Usage: ping <src_ip> <dest_ip> <count>\n");
+        }
     } else if (strlen(buf) > 0) {
         printf("Unknown command: %s\n", buf);
         printf("Available commands:\n");
@@ -76,7 +100,9 @@ void rsvp_cli_handle_input(int fd) {
         printf("  show mpls routes\n");
         printf("  setup tunnel <src_ip> <dest_ip> <tunnel_id> <name>\n");
         printf("  delete tunnel <tunnel_id> <lsp_id>\n");
+        printf("  ping <src_ip> <dest_ip> <count>\n");
     }
 
     rsvp_cli_print_prompt();
+    return 0;
 }

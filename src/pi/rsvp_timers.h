@@ -37,6 +37,7 @@ typedef struct {
     rsvp_timer_cb cb;       /**< Callback executed on expiration */
     void* arg;              /**< Argument passed to the callback */
     atomic_bool active;     /**< True if the timer is currently running */
+    uint64_t seq;           /**< Generation sequence number to prevent Use-After-Free/ABA */
 } rsvp_timer_t;
 
 /**

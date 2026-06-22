@@ -68,6 +68,7 @@ void rsvp_dispatcher_run(void) {
     struct pollfd fds[MAX_FDS];
     int nfds = 0;
     int timer_fds[MAX_FDS];
+    bool poll_stdin = true;
 
     if (rsvp_raw_sock < 0) return;
 
@@ -77,10 +78,12 @@ void rsvp_dispatcher_run(void) {
     while (1) {
         nfds = 0;
 
-        /* Add STDIN for CLI processing */
-        fds[nfds].fd = STDIN_FILENO;
-        fds[nfds].events = POLLIN;
-        nfds++;
+        /* Add STDIN for CLI processing if it is active */
+        if (poll_stdin) {
+            fds[nfds].fd = STDIN_FILENO;
+            fds[nfds].events = POLLIN;
+            nfds++;
+        }
 
         /* Add Raw RSVP Socket for incoming packets */
         fds[nfds].fd = rsvp_raw_sock;
@@ -111,15 +114,23 @@ void rsvp_dispatcher_run(void) {
         /* Process triggered events */
         for (int i = 0; i < nfds; i++) {
             if (fds[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {
-                LOG_ERROR("poll event error on fd %d: revents=0x%x", fds[i].fd,
-                          fds[i].revents);
+                if (fds[i].fd == STDIN_FILENO) {
+                    LOG_INFO("Dispatcher: STDIN hung up/invalid, disabling CLI input");
+                    poll_stdin = false;
+                } else {
+                    LOG_ERROR("poll event error on fd %d: revents=0x%x", fds[i].fd,
+                              fds[i].revents);
+                }
                 continue;
             }
 
             if (fds[i].revents & POLLIN) {
                 if (fds[i].fd == STDIN_FILENO) {
                     /* Handle command line input */
-                    rsvp_cli_handle_input(STDIN_FILENO);
+                    if (rsvp_cli_handle_input(STDIN_FILENO) < 0) {
+                        LOG_INFO("Dispatcher: STDIN EOF/error, disabling CLI input");
+                        poll_stdin = false;
+                    }
                 } else if (fds[i].fd == rsvp_raw_sock) {
                     /* Read incoming RSVP packet */
                     uint8_t buffer[MAX_RSVP_PACKET_SIZE];
