@@ -475,7 +475,7 @@ static void handle_resv_message(struct rsvp_message_info* info) {
         return;
     }
 
-    uint32_t label = ntohl(info->label->label) >> 12;
+    uint32_t label = ntohl(info->label->label);
 
     LOG_INFO("Handling RESV: [TunnelID: %d, Dest: %s, Source: %s, Label: %u, NextHop: %s]",
              ntohs(info->key.session.tunnel_id), dest_str, src_str, label, nh_str);

@@ -122,7 +122,7 @@ int rsvp_builder_add_hop_ipv6(struct rsvp_builder* b, struct in6_addr* neighbor,
 
 int rsvp_builder_add_label_ipv4(struct rsvp_builder* b, uint32_t label) {
     struct rsvp_label_ipv4 lbl;
-    lbl.label = htonl(label << 12);
+    lbl.label = htonl(label);
     return rsvp_builder_add_obj(b, RSVP_CLASS_LABEL, 1, &lbl, sizeof(lbl));
 }
 

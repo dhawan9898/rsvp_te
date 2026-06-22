@@ -203,7 +203,7 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
                 if (info->label) break;
                 if (obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_label_ipv4)) {
                     info->label = (struct rsvp_label_ipv4*)obj_data;
-                    LOG_DEBUG("  - LABEL: %u", ntohl(info->label->label) >> 12);
+                    LOG_DEBUG("  - LABEL: %u", ntohl(info->label->label));
                 }
                 break;
 

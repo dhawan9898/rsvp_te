@@ -252,7 +252,7 @@ struct rsvp_adspec {
  * @details Specifies the allocated label (RFC 3209).
  */
 struct rsvp_label_ipv4 {
-    uint32_t label; /**< 20 bits label, 3 bits EXP, 1 bit S, 8 bits TTL */
+    uint32_t label; /**< 20-bit MPLS label value, right-aligned (RFC 3209) */
 } __attribute__((packed));
 
 /** @name RSVP Protocol Error Codes (RFC 2205)
