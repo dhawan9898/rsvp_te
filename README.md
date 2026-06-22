@@ -1,4 +1,4 @@
-# RSVP-TE Industrial Daemon (Refactored)
+# RSVP-TE Industrial Daemon
 
 An industrial-grade, robust, and modular RSVP-TE (Resource Reservation Protocol - Traffic Engineering) daemon implementation for Linux. This project adheres to RFC 2205, 2209, and 3209, featuring a hierarchical wheel timer and a command-line interface.
 
