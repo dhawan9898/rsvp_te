@@ -60,22 +60,24 @@ bool hal_netlink_is_local_addr(struct in_addr* addr);
 /**
  * @brief Install an MPLS label (swap or push) in the data plane.
  * @details Configures an MPLS route in the kernel data plane.
- * @param [in] in_label The incoming MPLS label.
- * @param [in] out_label The outgoing MPLS label.
- * @param [in] out_ifindex The egress interface index.
- * @param [in] next_hop The next hop IP address.
+ * @param [in] in_label The incoming MPLS label (0 for ingress).
+ * @param [out_label] The outgoing MPLS label.
+ * @param [out_ifindex] The egress interface index.
+ * @param [next_hop] The next hop IP address.
+ * @param [dest_addr] The destination IP address (required for ingress).
  * @return 0 on success, or -1 on error.
  */
 int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex,
-                     struct in_addr* next_hop);
+                     struct in_addr* next_hop, struct in_addr* dest_addr);
 
 /**
  * @brief Remove an MPLS label from the data plane.
  * @details Deletes an MPLS route from the kernel data plane.
- * @param [in] in_label The incoming MPLS label to remove.
+ * @param [in] in_label The incoming MPLS label to remove (0 for ingress).
+ * @param [in] dest_addr The destination IP address (required for ingress).
  * @return 0 on success, or -1 on error.
  */
-int hal_mpls_remove(uint32_t in_label);
+int hal_mpls_remove(uint32_t in_label, struct in_addr* dest_addr);
 
 /**
  * @brief Dump current MPLS routes to stdout.

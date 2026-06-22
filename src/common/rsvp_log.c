@@ -63,11 +63,19 @@ void rsvp_log(rsvp_log_level_t level, const char* func, int line,
             break;
     }
 
-    /* Get the current local time for the log timestamp */
-    time_t t = time(NULL);
-    struct tm* tm_info = localtime(&t);
-    char time_buf[26];
-    strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", tm_info);
+    /* Optimization: only get time if needed or every N calls, but for simplicity
+     * let's just use a faster way if possible. For now, keep strftime but remove fflush.
+     */
+    static time_t last_t = 0;
+    static char time_buf[26] = {0};
+    time_t now = time(NULL);
+
+    if (now != last_t) {
+        struct tm tm_info;
+        localtime_r(&now, &tm_info);
+        strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", &tm_info);
+        last_t = now;
+    }
 
     /* Print the log prefix containing timestamp, level, function name, and line number */
     fprintf(out, "[%s] [%s] %s:%d: ", time_buf, level_str, func, line);
@@ -79,7 +87,11 @@ void rsvp_log(rsvp_log_level_t level, const char* func, int line,
     va_end(args);
 
     fprintf(out, "\n");
-    fflush(out);
+
+    /* Only flush for errors to avoid slowing down the main path */
+    if (level >= LOG_LEVEL_WARN) {
+        fflush(out);
+    }
 
     /* Also print errors to stderr for immediate feedback if not already logging to stdout/stderr */
     if (level == LOG_LEVEL_ERROR && out != stderr) {
@@ -88,6 +100,7 @@ void rsvp_log(rsvp_log_level_t level, const char* func, int line,
         vfprintf(stderr, format, args);
         va_end(args);
         fprintf(stderr, "\n");
+        fflush(stderr);
     }
 }
 

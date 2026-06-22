@@ -7,6 +7,7 @@
 #ifndef RSVP_TIMERS_H
 #define RSVP_TIMERS_H
 
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include "wheel_timer.h"
@@ -35,7 +36,7 @@ typedef struct {
     rsvp_timer_type_t type; /**< Type of the timer */
     rsvp_timer_cb cb;       /**< Callback executed on expiration */
     void* arg;              /**< Argument passed to the callback */
-    bool active;            /**< True if the timer is currently running */
+    atomic_bool active;     /**< True if the timer is currently running */
 } rsvp_timer_t;
 
 /**

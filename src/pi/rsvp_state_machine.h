@@ -28,10 +28,11 @@ void rsvp_initiate_path(struct in_addr* src, struct in_addr* dest,
                         uint16_t tunnel_id, const char* lsp_name);
 
 /**
- * @brief Teardown an existing LSP by Tunnel ID.
+ * @brief Teardown an existing LSP by Tunnel ID and LSP ID.
  * @details Finds the corresponding PSB and initiates a PathTear message to gracefully remove state downstream.
- * @param [in] tunnel_id The tunnel identifier of the LSP to teardown.
+ * @param [in] tunnel_id The tunnel identifier.
+ * @param [in] lsp_id The LSP identifier.
  */
-void rsvp_teardown_path(uint16_t tunnel_id);
+void rsvp_teardown_path(uint16_t tunnel_id, uint16_t lsp_id);
 
 #endif /* RSVP_STATE_MACHINE_H */

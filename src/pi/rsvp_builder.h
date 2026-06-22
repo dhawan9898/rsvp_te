@@ -191,6 +191,28 @@ int rsvp_builder_add_ero(struct rsvp_builder* b, struct rsvp_ero_ipv4_subobj* er
 int rsvp_builder_add_rro(struct rsvp_builder* b, struct rsvp_ero_ipv4_subobj* rro_list, size_t count);
 
 /**
+ * @brief Convert a network byte order floating point value to host order.
+ * @param [in] net_value The network byte order value.
+ * @return The host order floating point value.
+ */
+float rsvp_net_to_float(uint32_t net_value);
+
+/**
+ * @brief Convert a host order floating point value to network order.
+ * @param [in] host_value The host order value.
+ * @return The network byte order representation.
+ */
+uint32_t rsvp_float_to_net(float host_value);
+
+/**
+ * @brief Verify the RSVP checksum of a message without mutating the buffer.
+ * @param [in] buf Pointer to the RSVP message.
+ * @param [in] len Length of the RSVP message.
+ * @return 0 if checksum is valid, -1 otherwise.
+ */
+int rsvp_checksum_verify(const void* buf, size_t len);
+
+/**
  * @brief Finalize the constructed RSVP message.
  * @details Updates the message length field and computes the checksum.
  * @param [in,out] b Pointer to the builder context.

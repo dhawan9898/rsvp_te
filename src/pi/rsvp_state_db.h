@@ -31,12 +31,13 @@ struct rsvp_psb* rsvp_psb_find(struct rsvp_path_key* key);
 struct rsvp_psb* rsvp_psb_create(struct rsvp_path_key* key);
 
 /**
- * @brief Find a Path State Block (PSB) by tunnel ID.
- * @details Linearly searches the hash table for a PSB matching the given tunnel ID.
+ * @brief Find a Path State Block (PSB) by tunnel ID and LSP ID.
+ * @details Linearly searches the hash table for a PSB matching the given IDs.
  * @param [in] tunnel_id The tunnel identifier.
+ * @param [in] lsp_id The LSP identifier.
  * @return Pointer to the matching PSB, or NULL if not found.
  */
-struct rsvp_psb* rsvp_psb_find_by_id(uint16_t tunnel_id);
+struct rsvp_psb* rsvp_psb_find_by_id(uint16_t tunnel_id, uint16_t lsp_id);
 
 /**
  * @brief Delete a Path State Block (PSB).

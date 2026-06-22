@@ -23,6 +23,18 @@
 
 #define RTA_VIA 18
 #define RTA_NEWDST 19
+#ifndef RTA_ENCAP
+#define RTA_ENCAP 21
+#endif
+#ifndef RTA_ENCAP_TYPE
+#define RTA_ENCAP_TYPE 22
+#endif
+#ifndef LWTUNNEL_ENCAP_MPLS
+#define LWTUNNEL_ENCAP_MPLS 1
+#endif
+#ifndef MPLS_IPTUNNEL_DST
+#define MPLS_IPTUNNEL_DST 1
+#endif
 #define MAX_INTERFACES 32
 
 struct interface {
@@ -36,6 +48,7 @@ struct mpls_route {
     uint32_t out_label;
     int ifindex;
     struct in_addr next_hop;
+    struct in_addr dest_addr;
     bool active;
 };
 
@@ -310,24 +323,109 @@ int hal_netlink_get_egress_if(struct in_addr* dest, struct in_addr* next_hop) {
  * @return 0 on success, or -1 on error.
  */
 int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex,
-                     struct in_addr* next_hop) {
-    LOG_INFO("[HAL-Linux] Installing MPLS: in=%u, out=%u, if=%d, next_hop=%s",
-             in_label, out_label, out_ifindex, next_hop ? inet_ntoa(*next_hop) : "NULL");
+                     struct in_addr* next_hop, struct in_addr* dest_addr) {
+    LOG_INFO("[HAL-Linux] Installing MPLS: in=%u, out=%u, if=%d, next_hop=%s, dest=%s",
+             in_label, out_label, out_ifindex,
+             next_hop ? inet_ntoa(*next_hop) : "NULL",
+             dest_addr ? inet_ntoa(*dest_addr) : "NULL");
 
     /* Cache the route for CLI 'show mpls routes' */
     for (int i = 0; i < MAX_INTERFACES; i++) {
-        if (!mpls_routes[i].active || mpls_routes[i].in_label == in_label) {
+        bool match = false;
+        if (mpls_routes[i].active) {
+            if (in_label == 0 && mpls_routes[i].in_label == 0) {
+                if (dest_addr && mpls_routes[i].dest_addr.s_addr == dest_addr->s_addr) {
+                    match = true;
+                }
+            } else if (in_label > 0 && mpls_routes[i].in_label == in_label) {
+                match = true;
+            }
+        }
+        if (!mpls_routes[i].active || match) {
             mpls_routes[i].in_label = in_label;
             mpls_routes[i].out_label = out_label;
             mpls_routes[i].ifindex = out_ifindex;
             if (next_hop) mpls_routes[i].next_hop = *next_hop;
+            if (dest_addr) mpls_routes[i].dest_addr = *dest_addr;
             mpls_routes[i].active = true;
             break;
         }
     }
 
     if (in_label == 0) {
-        LOG_WARN("[HAL-Linux] Skipping MPLS install for in_label 0 (ingress IP encap not implemented)");
+        if (!dest_addr) {
+            LOG_WARN("[HAL-Linux] Cannot install ingress route without dest_addr");
+            return -1;
+        }
+
+        struct {
+            struct nlmsghdr nlh;
+            struct rtmsg rtm;
+            char buf[512];
+        } req;
+
+        memset(&req, 0, sizeof(req));
+        req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+        req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE;
+        req.nlh.nlmsg_type = RTM_NEWROUTE;
+        req.nlh.nlmsg_seq = 5;
+        req.nlh.nlmsg_pid = getpid();
+        
+        req.rtm.rtm_family = AF_INET;
+        req.rtm.rtm_dst_len = 32;
+        req.rtm.rtm_table = RT_TABLE_MAIN;
+        req.rtm.rtm_protocol = RTPROT_BOOT;
+        req.rtm.rtm_scope = RT_SCOPE_UNIVERSE;
+        req.rtm.rtm_type = RTN_UNICAST;
+
+        /* RTA_DST */
+        addattr_l(&req.nlh, sizeof(req), RTA_DST, &dest_addr->s_addr, sizeof(dest_addr->s_addr));
+
+        /* RTA_OIF */
+        addattr_l(&req.nlh, sizeof(req), RTA_OIF, &out_ifindex, sizeof(out_ifindex));
+
+        /* RTA_GATEWAY */
+        if (next_hop && next_hop->s_addr != 0) {
+            addattr_l(&req.nlh, sizeof(req), RTA_GATEWAY, &next_hop->s_addr, sizeof(next_hop->s_addr));
+        }
+
+        /* RTA_ENCAP_TYPE */
+        unsigned short encap_type = LWTUNNEL_ENCAP_MPLS;
+        addattr_l(&req.nlh, sizeof(req), RTA_ENCAP_TYPE, &encap_type, sizeof(encap_type));
+
+        /* RTA_ENCAP */
+        struct rtattr *encap = (struct rtattr *)(((char *)&req) + NLMSG_ALIGN(req.nlh.nlmsg_len));
+        encap->rta_type = RTA_ENCAP;
+        
+        struct rtattr *dst = (struct rtattr *)RTA_DATA(encap);
+        dst->rta_type = MPLS_IPTUNNEL_DST;
+        dst->rta_len = RTA_LENGTH(sizeof(uint32_t));
+        
+        uint32_t *label_ptr = (uint32_t *)RTA_DATA(dst);
+        *label_ptr = htonl((out_label << 12) | (1 << 8)); /* BOS=1 */
+        
+        int dst_len_aligned = RTA_ALIGN(dst->rta_len);
+        encap->rta_len = RTA_LENGTH(dst_len_aligned);
+        
+        req.nlh.nlmsg_len = NLMSG_ALIGN(req.nlh.nlmsg_len) + RTA_ALIGN(encap->rta_len);
+
+        int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+        if (sock < 0) {
+            LOG_ERROR("[HAL-Linux] socket(AF_NETLINK) failed: %s", strerror(errno));
+            return -1;
+        }
+
+        struct sockaddr_nl sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.nl_family = AF_NETLINK;
+
+        if (sendto(sock, &req, req.nlh.nlmsg_len, 0, (struct sockaddr*)&sa, sizeof(sa)) < 0) {
+            LOG_ERROR("[HAL-Linux] sendto RTM_NEWROUTE (ingress) failed: %s", strerror(errno));
+            close(sock);
+            return -1;
+        }
+
+        close(sock);
         return 0;
     }
 
@@ -337,7 +435,7 @@ int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex,
         char buf[512];
     } req;
 
-    /* Configure the netlink message for creating a new MPLS route */
+    /* Configure the netlink message for creating a new MPLS route (Transit swap) */
     memset(&req, 0, sizeof(req));
     req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
     req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE;
@@ -395,24 +493,64 @@ int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex,
     return 0;
 }
 
-/**
- * @brief Remove an MPLS label from the data plane.
- * @details Sends an RTM_DELROUTE request via Netlink to delete a previously installed MPLS forwarding rule.
- * @param [in] in_label The incoming MPLS label to remove.
- * @return 0 on success, or -1 on error.
- */
-int hal_mpls_remove(uint32_t in_label) {
-    LOG_INFO("[HAL-Linux] Removing MPLS: in=%u", in_label);
+int hal_mpls_remove(uint32_t in_label, struct in_addr* dest_addr) {
+    LOG_INFO("[HAL-Linux] Removing MPLS: in=%u, dest=%s", in_label,
+             dest_addr ? inet_ntoa(*dest_addr) : "NULL");
     
     /* Update cache */
     for (int i = 0; i < MAX_INTERFACES; i++) {
-        if (mpls_routes[i].active && mpls_routes[i].in_label == in_label) {
-            mpls_routes[i].active = false;
+        if (mpls_routes[i].active) {
+            if (in_label == 0) {
+                if (dest_addr && mpls_routes[i].dest_addr.s_addr == dest_addr->s_addr && mpls_routes[i].in_label == 0) {
+                    mpls_routes[i].active = false;
+                }
+            } else {
+                if (mpls_routes[i].in_label == in_label) {
+                    mpls_routes[i].active = false;
+                }
+            }
         }
     }
 
     if (in_label == 0) {
-        LOG_WARN("[HAL-Linux] Skipping MPLS remove for in_label 0");
+        if (!dest_addr) {
+            LOG_WARN("[HAL-Linux] Cannot remove ingress route without dest_addr");
+            return -1;
+        }
+        
+        struct {
+            struct nlmsghdr nlh;
+            struct rtmsg rtm;
+            char buf[256];
+        } req;
+
+        memset(&req, 0, sizeof(req));
+        req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+        req.nlh.nlmsg_flags = NLM_F_REQUEST;
+        req.nlh.nlmsg_type = RTM_DELROUTE;
+        req.nlh.nlmsg_seq = 4;
+        req.nlh.nlmsg_pid = getpid();
+        
+        req.rtm.rtm_family = AF_INET;
+        req.rtm.rtm_dst_len = 32;
+        req.rtm.rtm_table = RT_TABLE_MAIN;
+        req.rtm.rtm_protocol = RTPROT_BOOT;
+        req.rtm.rtm_scope = RT_SCOPE_UNIVERSE;
+        req.rtm.rtm_type = RTN_UNICAST;
+
+        addattr_l(&req.nlh, sizeof(req), RTA_DST, &dest_addr->s_addr, sizeof(dest_addr->s_addr));
+
+        int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+        if (sock < 0) return -1;
+
+        struct sockaddr_nl sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.nl_family = AF_NETLINK;
+
+        if (sendto(sock, &req, req.nlh.nlmsg_len, 0, (struct sockaddr*)&sa, sizeof(sa)) < 0) {
+            LOG_ERROR("[HAL-Linux] sendto RTM_DELROUTE (ingress) failed: %s", strerror(errno));
+        }
+        close(sock);
         return 0;
     }
 
@@ -449,18 +587,20 @@ int hal_mpls_remove(uint32_t in_label) {
     return 0;
 }
 
-/**
- * @brief Dump current MPLS routes to stdout.
- * @details Prints the contents of the local MPLS route cache to standard output.
- */
 void hal_mpls_dump(void) {
     printf("--- MPLS Forwarding Table ---\n");
     int count = 0;
     for (int i = 0; i < MAX_INTERFACES; i++) {
         if (mpls_routes[i].active) {
-            printf("In-Label: %u, Out-Label: %u, Interface: %d, Next-Hop: %s\n",
-                   mpls_routes[i].in_label, mpls_routes[i].out_label,
-                   mpls_routes[i].ifindex, inet_ntoa(mpls_routes[i].next_hop));
+            if (mpls_routes[i].in_label == 0) {
+                printf("In-Label: Push (0), Dest: %s, Out-Label: %u, Interface: %d, Next-Hop: %s\n",
+                       inet_ntoa(mpls_routes[i].dest_addr), mpls_routes[i].out_label,
+                       mpls_routes[i].ifindex, inet_ntoa(mpls_routes[i].next_hop));
+            } else {
+                printf("In-Label: %u, Out-Label: %u, Interface: %d, Next-Hop: %s\n",
+                       mpls_routes[i].in_label, mpls_routes[i].out_label,
+                       mpls_routes[i].ifindex, inet_ntoa(mpls_routes[i].next_hop));
+            }
             count++;
         }
     }
