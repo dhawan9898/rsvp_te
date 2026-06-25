@@ -14,7 +14,7 @@ SRC = src/main.c src/pi/rsvp_dispatcher.c src/pi/rsvp_parser.c src/pi/rsvp_state
 OBJ = $(SRC:.c=.o)
 TARGET = rsvp_daemon
 
-TEST_SRC = test_rsvp.c src/pi/rsvp_parser.c src/pi/rsvp_state_db.c src/pi/rsvp_state_machine.c src/pi/label_mgr.c src/pi/rsvp_builder.c src/pi/rsvp_timers.c src/common/rsvp_log.c wheel_timer/wheel_timer.c
+TEST_SRC = test_rsvp.c src/pi/rsvp_parser.c src/pi/rsvp_state_db.c src/pi/rsvp_state_machine.c src/pi/label_mgr.c src/pi/rsvp_builder.c src/pi/rsvp_timers.c src/pi/rsvp_hello.c src/pi/rsvp_if.c src/common/rsvp_log.c wheel_timer/wheel_timer.c
 TEST_OBJ = $(TEST_SRC:.c=.o)
 TEST_TARGET = test_rsvp
 
