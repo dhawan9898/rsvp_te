@@ -1,133 +1,252 @@
-# RSVP-TE Industrial Daemon
+# RSVP-TE Daemon
 
-An industrial-grade, robust, and modular RSVP-TE (Resource Reservation Protocol - Traffic Engineering) daemon implementation for Linux. This project adheres to RFC 2205, 2209, and 3209, featuring a high-scale hierarchical wheel timer, a rtnetlink-based hardware/kernel data-plane abstraction, and an interactive command-line interface.
-
----
-
-## Capabilities & Architecture
-
-- **RFC Compliance**: Implements core signaling for RSVP (RFC 2205/2209) and RSVP-TE extensions (RFC 3209).
-- **Hierarchical Wheel Timers**: Utilizes an $O(1)$ amortized hierarchical cascade wheel timer (`wheel_timer/`) for high-scale soft-state management.
-- **Asynchronous, Non-Blocking Event Loop**: Powered by a unified `poll()` loop in `src/pi/rsvp_dispatcher.c` that multiplexes:
-  - Command Line Interface (CLI) input
-  - Raw RSVP sockets (IPv4 Protocol 46)
-  - Linux rtnetlink sockets (for link, address, and egress routing events)
-  - Thread-safe timer pipe signals
-- **Secure Asynchronous Timer Processing**: Implements a main-thread active timer registry with generation sequence numbers to completely eliminate Use-After-Free (UAF) and ABA race conditions when timers expire concurrently during database mutations.
-- **Hardware/Kernel Data Plane Programing**: Communicates with the Linux kernel via rtnetlink (`src/pd/hal_netlink_linux.c`) to query local interface configurations, perform egress route next-hop resolution, and program MPLS forwarding tables:
-  - **MPLS Push (Ingress)**: Sets up an `encap mpls` IPv4 route for the tunnel destination IP.
-  - **MPLS Swap (Transit)**: Injects MPLS route swaps for incoming-to-outgoing labels.
-  - **MPLS Pop/Cleanups (Egress/Tear)**: Deletes routes during tunnel teardown or timeout.
-- **Robust Soft-State Cleanup**: Automatic teardown of stale resources using jittered trigger/backup timers.
-- **Error Spec Generation and Propagation**: Supports bidirectional generation and forwarding of `PathErr` and `ResvErr` messages with RFC-standard error codes.
+A modular, RFC-compliant RSVP-TE (Resource Reservation Protocol — Traffic Engineering) daemon for Linux. Implements core RSVP signaling (RFC 2205/2209), RSVP-TE extensions (RFC 3209), Hello liveness (RFC 3209 §5.3), Fast ReRoute facility-backup (RFC 4090), and Make-Before-Break re-optimization.
 
 ---
 
-## Usage
+## Feature Summary
 
-### Building
+| Area | RFC | Status |
+|------|-----|--------|
+| PATH / RESV / Tear / Err message handling | RFC 2205 | Supported |
+| Soft-state refresh with jitter | RFC 2205 §3.7 | Supported |
+| Blockade State Blocks (killer-reservation prevention) | RFC 2209 | Supported |
+| Explicit Route Object (ERO) — IPv4 strict hops | RFC 3209 §4.3 | Supported |
+| Record Route Object (RRO) | RFC 3209 §4.4 | Supported |
+| Label Request / Label Object | RFC 3209 §4.1 | Supported |
+| MPLS label allocation pool | RFC 3209 §4.1 | Supported |
+| MPLS Push (ingress), Swap (transit), Pop (egress) | RFC 3209 §4.1 | Supported |
+| LSP Session Attributes (setup/holding priority, name) | RFC 3209 §4.7 | Supported |
+| RSVP Hello — neighbor liveness detection | RFC 3209 §5.3 | Supported |
+| Per-interface bandwidth management (8 priorities) | RFC 2209 §2.2 | Supported |
+| FRR facility-backup (bypass tunnels, PLR auto-arm) | RFC 4090 | Supported |
+| FRR auto-association at transit PLR | RFC 4090 | Supported |
+| FRR revert after link recovery | RFC 4090 | Supported |
+| Make-Before-Break re-optimization | RFC 3209 §6.6 | Supported |
+| Graceful shutdown (PathTear / ResvTear on SIGTERM) | RFC 2205 | Supported |
+| Raw socket encapsulation (IP protocol 46) | RFC 2205 §4 | Supported |
+| Router Alert Option for PATH/RESV | RFC 2113 | Supported |
+| IPv6 address family | RFC 2205 | Unsupported |
+| RSVP UDP encapsulation | RFC 2205 §4 | Unsupported |
+| Integrity / authentication | RFC 2747 | Unsupported |
 
-To build the daemon and tests with logging enabled (default):
-```bash
-make clean && make
+---
+
+## Architecture
+
+```
+src/
+├── main.c                  Daemon entry point, signal handling, event loop
+├── common/
+│   ├── rsvp_protocol.h     Wire-format structs for all RSVP objects
+│   ├── rsvp_error.h        Error code enumeration
+│   └── rsvp_log.c/h        Thread-safe file logger
+├── pi/                     Protocol-Independent engine
+│   ├── rsvp_state_machine.c/h  Core FSM: PATH/RESV/Tear/Err handlers,
+│   │                           ERO routing, FRR trigger/revert/dump,
+│   │                           Make-Before-Break (rsvp_mbb_start)
+│   ├── rsvp_dispatcher.c/h     poll() event loop, raw socket I/O
+│   ├── rsvp_parser.c/h         RSVP message decoder → rsvp_message_info
+│   ├── rsvp_builder.c/h        RSVP message encoder
+│   ├── rsvp_state_db.c/h       PSB / RSB / BSB hash-table database
+│   ├── rsvp_state.h            State block struct definitions
+│   ├── rsvp_timers.c/h         Soft-state timer bridge (wheel timer)
+│   ├── label_mgr.c/h           MPLS label bitmap allocator
+│   ├── rsvp_hello.c/h          Hello subsystem (RFC 3209 §5.3)
+│   ├── rsvp_if.c/h             Per-interface RSVP state and BW accounting
+│   └── rsvp_cli.c/h            Interactive CLI command processor
+├── pd/                     Platform-Dependent implementations
+│   ├── hal_netlink_linux.c Linux rtnetlink: route lookup, MPLS programming
+│   └── hal_timer_linux.c   timerfd-based hardware timer
+wheel_timer/                O(1) hierarchical cascade timer wheel (pthread)
+tests/                      Unit and functional test suite
+└── test_rsvp.c             Legacy integration test (retained)
 ```
 
-To build without logging:
+### Event Loop
+
+The dispatcher (`rsvp_dispatcher.c`) runs a single-threaded `poll()` loop that
+multiplexes four event sources:
+
+1. **Raw RSVP socket** (IP protocol 46) — incoming PATH/RESV/Hello/Tear/Err
+2. **CLI stdin** — interactive operator commands
+3. **rtnetlink socket** — link-up/down events for FRR revert triggering
+4. **Timer pipe** — wheel timer expiry signals
+
+All state machine operations execute on this single thread, eliminating the
+need for locks on the PSB/RSB databases.
+
+### Soft-State and Timers
+
+Each PSB and RSB carries two wheel-timer instances:
+- **Refresh timer** — fires at `R × jitter(0.8–1.2)` to re-send PATH or RESV
+- **Cleanup timer** — fires at `K × R` (default K = 3) to expire stale state
+
+The wheel timer library (`wheel_timer/`) provides O(1) amortized insert and
+expiry using a hierarchical cascade structure backed by a dedicated pthread.
+Timer callbacks are delivered to the main thread via a pipe to stay
+single-threaded.
+
+### RSVP Hello (RFC 3209 §5.3)
+
+The Hello subsystem (`rsvp_hello.c`) maintains up to 128 neighbors:
+- Sends Hello REQUEST every 5 s; declares neighbor DOWN after 15 s (3 × interval)
+- Each neighbor carries a stable `src_instance` (random non-zero); a changed
+  `src_instance` in a received Hello signals a neighbor restart
+- Neighbor DOWN event calls `rsvp_frr_trigger()` for all LSPs egressing that
+  interface, enabling sub-second failover
+
+### Fast ReRoute (RFC 4090 — Facility Backup)
+
+1. **Bypass tunnel setup**: `rsvp_initiate_bypass_tunnel()` signals an LSP that
+   avoids a specific protected interface (PLR → merge point)
+2. **Auto-association at PLR**: when a transit node receives PATH+FAST_REROUTE,
+   `rsvp_frr_auto_associate()` scans for a ready bypass covering the egress
+   interface and arms protection automatically — no manual operator step needed
+3. **Bypass UP hook**: when a bypass RESV is first installed,
+   `rsvp_frr_auto_associate_all()` retroactively arms any LSPs that were waiting
+4. **Trigger**: `rsvp_frr_trigger(ifindex)` reprograms MPLS forwarding to bypass
+   labels and re-sends PATH with LOCAL_PROTECTION_IN_USE
+5. **Revert**: `rsvp_frr_revert(ifindex)` restores original forwarding after link
+   recovery and re-sends PATH without LOCAL_PROTECTION_IN_USE
+
+### Make-Before-Break (RFC 3209 §6.6)
+
+`rsvp_mbb_start(tunnel_id, old_lsp_id, new_lsp_id, ero, ero_count)` creates a
+new LSP with the same Session (tunnel_id) but a fresh LSP-ID. The incumbent
+path stays active throughout. When the new path's first RESV arrives
+(`is_mbb_pending == true`), `rsvp_mbb_complete()` atomically tears down the
+old path — zero traffic interruption.
+
+---
+
+## Building
+
 ```bash
-make clean && make DISABLE_LOGS=1
+# Build daemon and legacy integration test
+make
+
+# Build all unit tests (no root required)
+make tests
+
+# Run the full test suite
+make check
+
+# Build without logging (smaller binary)
+make DISABLE_LOGS=1
 ```
 
-### Running the Daemon
+### Dependencies
+
+- GCC with C11 support
+- Linux kernel headers (`<linux/rtnetlink.h>`, `<linux/mpls.h>`)
+- pthreads (`-lpthread`)
+- libm (`-lm`)
+
+---
+
+## Running
 
 ```bash
 sudo ./rsvp_daemon
 ```
-*Note: `sudo` is required to open the raw IP socket (protocol 46) and manipulate kernel routing tables via Netlink.*
 
-### CLI Commands
-
-Once the daemon is running, you will be presented with the `rsvp-te>` prompt:
-- `show psb`: Displays all active Path State Blocks.
-- `show rsb`: Displays all active Reservation State Blocks.
-- `show mpls routes`: Displays the local MPLS route cache including both ingress push tunnels and transit swaps.
-- `setup tunnel <src_ip> <dest_ip> <tunnel_id> <name>`: Initiates a new RSVP-TE path from the ingress.
-  - Example: `setup tunnel 10.0.0.1 10.0.0.2 1 test_tunnel`
-- `delete tunnel <tunnel_id> <lsp_id>`: Triggers manual teardown of a path and reservation.
-  - Example: `delete tunnel 1 1`
-- `ping <src_ip> <dest_ip> <count>`: Executes a ping command bound to the source interface/IP to verify the MPLS encapsulation and datapath forwarding for the tunnel destination.
-  - Example: `ping 10.0.0.1 10.0.0.2 5`
+Root privileges are required to open a raw IP socket (protocol 46) and inject
+MPLS routes via rtnetlink.
 
 ---
 
-## RSVP & RSVP-TE Feature Checklist
+## CLI Commands
 
-Below is a detailed checklist of features supported by this daemon, indicating their compliance status for future enhancement references.
+Once the daemon is running, the `rsvp-te>` prompt accepts:
 
-### 1. RSVP Core Signaling (RFC 2205 & RFC 2209)
+### Show commands
+```
+show psb                          — All active Path State Blocks
+show rsb                          — All active Reservation State Blocks
+show mpls routes                  — Local MPLS route cache
+show rsvp neighbors               — Hello neighbor state table
+show rsvp interfaces              — All RSVP-enabled interfaces
+show rsvp interface <name>        — Detailed per-interface info
+show rsvp frr                     — FRR protection status table
+```
 
-| Feature | RFC Section | Status | Implementation Details / Limitations |
-| :--- | :--- | :---: | :--- |
-| **Path State Block (PSB) Management** | RFC 2205 Sec 3.1 | **Supported** | Tracked in state database with rolling hash. |
-| **Resv State Block (RSB) Management** | RFC 2205 Sec 3.1 | **Supported** | Tracked in state database; triggers label binding. |
-| **Blockade State Blocks (BSB)** | RFC 2209 | **Supported** | Implements blockade state and blockade timers ($T_b$) to prevent killer reservations. |
-| **Soft-State Refresh & Jitter** | RFC 2205 Sec 3.7 | **Supported** | Powered by high-precision cascade timer wheel. Refresh interval jittered (0.8R to 1.2R). |
-| **Soft-State State Cleanup** | RFC 2205 Sec 3.7 | **Supported** | Automated state expiry ($K \times R$ timeout) when refreshes cease. |
-| **PathTear & ResvTear Propagation**| RFC 2205 Sec 3.8 | **Supported** | Bidirectional teardown propagation downstream and upstream. |
-| **PathErr & ResvErr Propagation** | RFC 2205 Sec 3.9 | **Supported** | Generates, logs, and propagates error messages with standard error codes. |
-| **Raw Socket IP Encap (Protocol 46)**| RFC 2205 Sec 4 | **Supported** | Uses `SOCK_RAW` socket. Binds Router Alert Option (RAO) for intermediate packet interception. |
-| **RSVP UDP Encapsulation** | RFC 2205 Sec 4 | **Unsupported** | Only supports raw IP socket transmission. |
-| **Integrity & Authentication** | RFC 2747 / 3097 | **Unsupported** | Parsing hooks exist for Integrity object, but MD5/HMAC verification is not implemented. |
-| **IPv4 Address Family** | RFC 2205 | **Supported** | Full IPv4 support. |
-| **IPv6 Address Family** | RFC 2205 | **Unsupported** | Protocol structures are declared but parsing and processing are unimplemented. |
+### Interface configuration
+```
+interface <name> rsvp enable
+interface <name> rsvp disable
+interface <name> rsvp neighbor <ip>
+interface <name> bandwidth <Mbps>
+interface <name> reservable-bandwidth <Mbps>
+interface <name> hello-interval <ms>
+```
 
-### 2. RSVP Traffic Engineering Extensions (RFC 3209)
+### Tunnel operations
+```
+setup tunnel <src_ip> <dest_ip> <tunnel_id> <name>
+delete tunnel <tunnel_id> <lsp_id>
+```
 
-| Feature | RFC Section | Status | Implementation Details / Limitations |
-| :--- | :--- | :---: | :--- |
-| **Explicit Route Object (ERO)** | RFC 3209 Sec 4.3 | **Supported** | Parses strict sub-objects (IPv4 hops), pops local addresses, and resolves next-hop egress interfaces. |
-| **Record Route Object (RRO)** | RFC 3209 Sec 4.4 | **Supported** | Collects actual traversed hops and records route info downstream. |
-| **Label Request Object Signaling** | RFC 3209 Sec 4.1 | **Supported** | Mandatory check for new path establishments. |
-| **Label Object Signaling** | RFC 3209 Sec 4.1 | **Supported** | Transmits allocated downstream labels upstream inside RESV messages. |
-| **Label Allocation Pool** | RFC 3209 Sec 4.1 | **Supported** | Local bitmap-based dynamic allocator managing a pool of MPLS labels. |
-| **Ingress Label Mapping (Push)** | RFC 3209 Sec 4.1 | **Supported** | Programs kernel routing tables via Netlink (`RTA_ENCAP`/`MPLS_IPTUNNEL_DST`) to push label for destination IP traffic. |
-| **Transit Label Swapping (Swap)** | RFC 3209 Sec 4.1 | **Supported** | Inserts swap routing rules (`AF_MPLS` family) for label-to-label mappings toward the next-hop. |
-| **Egress Label Popping (Pop / PHP)** | RFC 3209 Sec 4.1 | **Partially** | Implicit-null and popping behavior is handled on kernel data-planes; control-plane tracks egress pop states. |
-| **Admission Control & QoS Accounting**| RFC 3209 Sec 2 | **Partially** | Parses flowspecs/TSpec rate-limits, but lacks interface-level bandwidth booking and enforcement. |
-| **LSP Session Attributes** | RFC 3209 Sec 4.7 | **Supported** | Parses setup/holding priorities and maps LSP names. |
-| **FRR & Local Protection** | RFC 4090 | **Unsupported** | Fast Reroute (facility or one-to-one backup) is not implemented. |
-| **Graceful Restart** | RFC 3473 Sec 9 | **Unsupported** | Missing helper recovery modes and hello keep-alive handshakes. |
-
----
-
-## Code Directory Walkthrough
-
-- `src/main.c`: Daemon entry point, logger boot, database init, and event loop activation.
-- `src/common/`: Shared structures:
-  - `rsvp_protocol.h`: Wire-format RSVP and RSVP-TE packet headers and objects.
-  - `rsvp_error.h`: System-wide error status codes.
-  - `rsvp_log.c`: Thread-safe file logging.
-- `src/pi/`: Protocol-independent engine:
-  - `rsvp_state_machine.c`: RFC-compliant state changes, ERO lookups, and signaling procedures.
-  - `rsvp_dispatcher.c`: Multiplexing poll event loop and raw socket IP transmission.
-  - `rsvp_parser.c` & `rsvp_builder.c`: RSVP message decoding and encoding.
-  - `rsvp_state_db.c`: Memory database managing PSB, RSB, and BSB hash maps.
-  - `rsvp_timers.c`: Bridge between state timers and the cascade wheel timer.
-  - `label_mgr.c`: MPLS label bitmap allocator.
-  - `rsvp_cli.c`: Interactive shell terminal processor.
-- `src/pd/`: Platform-dependent implementations:
-  - `hal_netlink_linux.c`: Linux-specific rtnetlink programming for MPLS and routing rules.
-  - `hal_timer_linux.c`: Central timer wrapper using `timerfd`.
-- `wheel_timer/`: High-performance $O(1)$ cascade timer wheel library using pthread workers.
+### FRR and MBB
+```
+rsvp frr revert <ifindex>                       — Revert after link recovery
+rsvp mbb <tunnel_id> <old_lsp_id> <new_lsp_id>  — Start MBB re-optimization
+```
 
 ---
 
-## Restrictions & Assumptions
+## Test Suite
 
-1. **Root Privileges**: The daemon requires root permissions (`sudo`) to create raw protocol sockets and invoke rtnetlink route injections.
-2. **Direct Adjacency**: The daemon assumes that next hops are directly reachable on the link level.
-3. **Single-Threaded Control Logic**: While the timer system uses background workers, the state-machine operations run strictly single-threaded inside the main event loop context to preserve state DB integrity without mutex overhead.
+Tests live in `tests/` and build independently of the daemon — no Linux netlink
+or timerfd. All platform-dependent HAL functions are replaced by stubs in
+`tests/mocks.c`.
+
+| Binary | What it covers |
+|--------|----------------|
+| `tests/test_builder` | Message encoding: field values, byte order, buffer overflow |
+| `tests/test_parser` | Message decoding: PATH, RESV, Hello, ERO, truncation rejection |
+| `tests/test_state_db` | PSB/RSB/BSB hash-table CRUD, find-by-id, bucket iterator |
+| `tests/test_label_mgr` | Label pool: alloc, free, exhaustion, reinit |
+| `tests/test_if` | Interface enable/disable, BW config, reserve/release, available-BW |
+| `tests/test_hello` | Neighbor lifecycle, state transitions, ACK response, restart detection |
+| `tests/test_state_machine` | Full PATH→RESV→Tear functional flows, MPLS install/remove verification |
+| `tests/test_mbb_frr` | MBB lifecycle, FRR protection API, trigger/revert smoke tests |
+
+```bash
+make check        # build all + run + summarize
+```
+
+Each binary exits 0 on full pass and 1 on any failure. `make check` prints a
+final pass/fail count across all binaries.
 
 ---
 
-## Licensing
-This project is provided for industrial prototyping, testing, and research purposes.
+## State Machine Data Flow
+
+```
+Ingress (head-end)
+  rsvp_initiate_path()
+       │  PATH →
+       ▼
+Transit node(s)
+  handle_path_message()  — create PSB, pop ERO hop, forward PATH
+  handle_resv_message()  — create RSB, allocate label, swap MPLS, forward RESV
+       │  ← RESV
+       ▼
+Egress (tail-end)
+  handle_path_message()  — create PSB, allocate label_in, send RESV upstream
+  hal_mpls_install()     — Push (ingress) or Pop (egress) rule programmed
+```
+
+---
+
+## Notes and Constraints
+
+- **Root required** for raw sockets and rtnetlink MPLS route injection
+- **Single-threaded control plane** — all FSM operations run on the dispatcher
+  thread; no locks needed on state blocks
+- **Soft-state model** — state expires if refreshes stop; explicit tears are
+  optimizations, not requirements
+- **IPv4 only** — IPv6 session objects are parsed but not processed
+- **Direct adjacency** — next hops are assumed to be on directly connected
+  links; recursive resolution is not implemented
