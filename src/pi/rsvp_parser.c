@@ -313,6 +313,22 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
                 }
                 break;
 
+            case RSVP_CLASS_HELLO:
+                /* RFC 3209 §5.3 — Class 22, C-Type 1 (REQUEST) or C-Type 2 (ACK).
+                 * Each Hello message carries exactly one HELLO object. */
+                if (info->hello_obj) break;
+                if ((obj_hdr->c_type == RSVP_HELLO_CTYPE_REQUEST ||
+                     obj_hdr->c_type == RSVP_HELLO_CTYPE_ACK) &&
+                    obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_hello_obj)) {
+                    info->hello_obj   = (struct rsvp_hello_obj*)obj_data;
+                    info->hello_ctype = obj_hdr->c_type;
+                    LOG_DEBUG("  - HELLO: type=%s src_instance=0x%08X dst_instance=0x%08X",
+                              (obj_hdr->c_type == RSVP_HELLO_CTYPE_REQUEST) ? "REQUEST" : "ACK",
+                              ntohl(info->hello_obj->src_instance),
+                              ntohl(info->hello_obj->dst_instance));
+                }
+                break;
+
             default:
                 /* RFC 2205 §3.10: class-number encoding determines treatment of unknown objects.
                  *   0–127  → reject the entire message and send PathErr/ResvErr

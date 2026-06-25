@@ -9,6 +9,8 @@
 #include "common/rsvp_log.h"
 #include "pi/label_mgr.h"
 #include "pi/rsvp_dispatcher.h"
+#include "pi/rsvp_hello.h"
+#include "pi/rsvp_if.h"
 #include "pi/rsvp_state_db.h"
 #include "pi/rsvp_state_machine.h"
 #include "pi/rsvp_timers.h"
@@ -60,6 +62,8 @@ int main(void) {
     rsvp_state_db_init();
     label_mgr_init(1000, 20000);
     rsvp_timer_init();
+    rsvp_if_init();
+    rsvp_hello_init();
 
     if (rsvp_dispatcher_init() < 0) {
         LOG_ERROR("Failed to initialize RSVP dispatcher");
@@ -73,6 +77,10 @@ int main(void) {
     /* ---- Graceful shutdown ---- */
     LOG_WARN("RSVP-TE Daemon shutting down — sending PathTear/ResvTear for all LSPs");
     rsvp_state_machine_shutdown();
+
+    /* Stop Hello timers and interface table before releasing state. */
+    rsvp_hello_shutdown();
+    rsvp_if_shutdown();
 
     /* Release state after all PathTear/ResvTear messages have been sent. */
     rsvp_state_db_cleanup();

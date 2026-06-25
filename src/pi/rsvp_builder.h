@@ -219,6 +219,17 @@ int rsvp_builder_add_adspec(struct rsvp_builder* b, struct rsvp_adspec* adspec);
 size_t rsvp_builder_add_integrity(struct rsvp_builder* b, uint8_t flags, uint8_t* key_id, uint64_t sequence_number, uint8_t* digest, size_t digest_len);
 
 /**
+ * @brief Add a HELLO object (RFC 3209 §5.3, Class 22).
+ * @param [in,out] b Pointer to the builder context.
+ * @param [in] src_instance Sender's unique instance identifier.
+ * @param [in] dst_instance Last received src_instance from the peer (0 if unknown).
+ * @param [in] c_type RSVP_HELLO_CTYPE_REQUEST (1) or RSVP_HELLO_CTYPE_ACK (2).
+ * @return 0 on success, or an error code.
+ */
+int rsvp_builder_add_hello(struct rsvp_builder* b, uint32_t src_instance,
+                            uint32_t dst_instance, uint8_t c_type);
+
+/**
  * @brief Add an Explicit Route Object (ERO).
  * @param [in,out] b Pointer to the builder context.
  * @param [in] ero_list Array of ERO IPv4 subobjects.

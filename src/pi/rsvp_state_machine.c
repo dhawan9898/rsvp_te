@@ -23,6 +23,7 @@
 #include "pi/rsvp_builder.h"
 #include "pi/rsvp_timers.h"
 #include "rsvp_dispatcher.h"
+#include "rsvp_hello.h"
 #include "rsvp_state_db.h"
 
 /* ---- Timing constants --------------------------------------------------- */
@@ -1145,6 +1146,19 @@ void rsvp_handle_message(struct rsvp_message_info* info) {
         case RSVP_MSG_RESVERR:  handle_resv_err(info);     break;
         case RSVP_MSG_RESVCONF: handle_resv_conf(info);    break;
         case RSVP_MSG_SREFRESH: handle_srefresh(info);     break;
+        case RSVP_MSG_HELLO:
+            /* RFC 3209 §5.3: dispatch directly to the Hello subsystem.
+             * The parser guarantees hello_obj is set when msg_type == HELLO. */
+            if (info->hello_obj) {
+                rsvp_hello_recv(&info->src_ip,
+                                ntohl(info->hello_obj->src_instance),
+                                ntohl(info->hello_obj->dst_instance),
+                                info->hello_ctype);
+            } else {
+                LOG_WARN("HELLO message from %s has no HELLO object — discarding",
+                         inet_ntoa(info->src_ip));
+            }
+            break;
         default:
             LOG_WARN("Unsupported RSVP message type %d — discarding",
                      info->common_hdr->msg_type);
