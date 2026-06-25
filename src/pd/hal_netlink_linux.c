@@ -21,6 +21,14 @@
 #define AF_MPLS 28
 #endif
 
+/* IFF_LOWER_UP is a Linux kernel flag not exposed by glibc's <net/if.h>.
+ * Define it directly rather than pulling in <linux/if.h>, which conflicts
+ * with <net/if.h> (included later via <ifaddrs.h>) due to duplicate enum
+ * declarations. */
+#ifndef IFF_LOWER_UP
+#define IFF_LOWER_UP (1U << 16)
+#endif
+
 #define RTA_VIA 18
 #define RTA_NEWDST 19
 #ifndef RTA_ENCAP
@@ -236,7 +244,7 @@ void hal_netlink_process(void) {
                     struct in_addr del_addr = *(struct in_addr*)RTA_DATA(rta);
                     for (int i = 0; i < MAX_INTERFACES; i++) {
                         if (ifaces[i].active &&
-                            ifaces[i].ifindex == ifa->ifa_index &&
+                            (unsigned int)ifaces[i].ifindex == ifa->ifa_index &&
                             ifaces[i].addr.s_addr == del_addr.s_addr) {
                             LOG_INFO("Netlink: Address removed — if %d: %s",
                                      ifa->ifa_index, inet_ntoa(del_addr));
