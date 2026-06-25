@@ -11,6 +11,7 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -30,6 +31,14 @@
 #define MAX_FDS 64
 
 static int rsvp_raw_sock = -1;
+
+/* Set by rsvp_dispatcher_stop() — safe to write from a signal handler because
+ * sig_atomic_t writes are atomic on all POSIX platforms. */
+static volatile sig_atomic_t g_running = 1;
+
+void rsvp_dispatcher_stop(void) {
+    g_running = 0;
+}
 
 int rsvp_dispatcher_init(void) {
     int one = 1;
@@ -75,7 +84,7 @@ void rsvp_dispatcher_run(void) {
     printf("rsvp-te> ");
     fflush(stdout);
 
-    while (1) {
+    while (g_running) {
         nfds = 0;
 
         /* Add STDIN for CLI processing if it is active */

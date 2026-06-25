@@ -24,8 +24,16 @@ int rsvp_dispatcher_init(void);
 /**
  * @brief Run the dispatcher event loop.
  * @details Blocks and polls for incoming data on the raw RSVP socket, netlink socket, timer fds, and stdin for the CLI.
+ *          Returns when rsvp_dispatcher_stop() is called (e.g. from a signal handler).
  */
 void rsvp_dispatcher_run(void);
+
+/**
+ * @brief Signal the dispatcher to exit its event loop.
+ * @details Safe to call from a signal handler. Sets an internal flag that causes rsvp_dispatcher_run()
+ *          to return cleanly after the current poll() iteration completes.
+ */
+void rsvp_dispatcher_stop(void);
 
 /**
  * @brief Send an RSVP packet to a specific destination.

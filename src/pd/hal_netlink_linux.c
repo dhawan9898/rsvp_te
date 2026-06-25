@@ -35,7 +35,12 @@
 #ifndef MPLS_IPTUNNEL_DST
 #define MPLS_IPTUNNEL_DST 1
 #endif
-#define MAX_INTERFACES 32
+/* 256 covers virtually all real-world router interface counts.
+ * 32 was insufficient for chassis-based core routers with many line-card ports. */
+#define MAX_INTERFACES  256
+/* MPLS route table is independent of the interface table; 4096 entries covers
+ * large-scale MPLS deployments with thousands of active LSPs. */
+#define MAX_MPLS_ROUTES 4096
 
 struct interface {
     int ifindex;
@@ -53,7 +58,7 @@ struct mpls_route {
 };
 
 static struct interface ifaces[MAX_INTERFACES];
-static struct mpls_route mpls_routes[MAX_INTERFACES];
+static struct mpls_route mpls_routes[MAX_MPLS_ROUTES];
 static int nl_sock = -1;
 
 static int find_iface_slot(int ifindex) {
@@ -112,8 +117,60 @@ int hal_netlink_init(void) {
         return -1;
     }
 
-    /* Trigger initial dump to populate cache */
-    /* (Simplified for now, in a real daemon we'd send RTM_GETADDR) */
+    /* Send RTM_GETADDR dump to populate the interface address cache immediately.
+     * Without this, addresses learned before the daemon starts are invisible
+     * until the next RTM_NEWADDR event fires. */
+    struct {
+        struct nlmsghdr nlh;
+        struct ifaddrmsg ifa;
+    } req_dump;
+
+    memset(&req_dump, 0, sizeof(req_dump));
+    req_dump.nlh.nlmsg_len   = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
+    req_dump.nlh.nlmsg_type  = RTM_GETADDR;
+    req_dump.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
+    req_dump.nlh.nlmsg_seq   = 1;
+    req_dump.nlh.nlmsg_pid   = getpid();
+    req_dump.ifa.ifa_family  = AF_INET;
+
+    if (send(nl_sock, &req_dump, req_dump.nlh.nlmsg_len, 0) < 0) {
+        LOG_WARN("hal_netlink_init: RTM_GETADDR dump failed: %s", strerror(errno));
+        /* Non-fatal: cache will populate via RTM_NEWADDR events as addresses change. */
+    } else {
+        /* Drain the dump replies synchronously before the main loop starts. */
+        char buf[8192];
+        ssize_t len;
+        while ((len = recv(nl_sock, buf, sizeof(buf), MSG_DONTWAIT)) > 0) {
+            struct nlmsghdr* nh;
+            for (nh = (struct nlmsghdr*)buf; NLMSG_OK(nh, len);
+                 nh = NLMSG_NEXT(nh, len)) {
+                if (nh->nlmsg_type == NLMSG_DONE) goto dump_done;
+                if (nh->nlmsg_type == NLMSG_ERROR) break;
+                if (nh->nlmsg_type == RTM_NEWADDR) {
+                    struct ifaddrmsg* ifa = NLMSG_DATA(nh);
+                    struct rtattr* rta = (struct rtattr*)IFA_RTA(ifa);
+                    int rta_len = IFA_PAYLOAD(nh);
+                    for (; RTA_OK(rta, rta_len); rta = RTA_NEXT(rta, rta_len)) {
+                        if (rta->rta_type == IFA_LOCAL) {
+                            int idx = find_iface_slot(ifa->ifa_index);
+                            if (idx >= 0) {
+                                ifaces[idx].ifindex = ifa->ifa_index;
+                                ifaces[idx].addr    = *(struct in_addr*)RTA_DATA(rta);
+                                ifaces[idx].active  = true;
+                                LOG_DEBUG("hal_netlink_init: Seeded if %d: %s",
+                                         ifa->ifa_index, inet_ntoa(ifaces[idx].addr));
+                            } else {
+                                LOG_WARN("hal_netlink_init: Interface cache full "
+                                         "(>%d interfaces), if %d not cached",
+                                         MAX_INTERFACES, ifa->ifa_index);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        dump_done:;
+    }
 
     LOG_INFO("Netlink socket initialized (fd: %d)", nl_sock);
     return 0;
@@ -148,28 +205,54 @@ void hal_netlink_process(void) {
         if (nh->nlmsg_type == NLMSG_ERROR) continue;
 
         if (nh->nlmsg_type == RTM_NEWADDR) {
-            /* We received a new address notification, parse the ifaddrmsg */
             struct ifaddrmsg* ifa = NLMSG_DATA(nh);
             struct rtattr* rta = (struct rtattr*)IFA_RTA(ifa);
             int rta_len = IFA_PAYLOAD(nh);
 
             for (; RTA_OK(rta, rta_len); rta = RTA_NEXT(rta, rta_len)) {
                 if (rta->rta_type == IFA_LOCAL) {
-                    /* Found a local IP address attribute, update the interface cache */
                     int idx = find_iface_slot(ifa->ifa_index);
                     if (idx < 0) {
-                        LOG_INFO(
-                            "Netlink: interface cache full, ignoring if %d",
-                            ifa->ifa_index);
+                        LOG_WARN("Netlink: Interface cache full (>%d interfaces), "
+                                 "if %d not cached",
+                                 MAX_INTERFACES, ifa->ifa_index);
                         continue;
                     }
                     ifaces[idx].ifindex = ifa->ifa_index;
-                    ifaces[idx].addr = *(struct in_addr*)RTA_DATA(rta);
-                    ifaces[idx].active = true;
-                    LOG_INFO("Netlink: Cache updated for if %d: %s",
+                    ifaces[idx].addr    = *(struct in_addr*)RTA_DATA(rta);
+                    ifaces[idx].active  = true;
+                    LOG_INFO("Netlink: Address added — if %d: %s",
                              ifa->ifa_index, inet_ntoa(ifaces[idx].addr));
                 }
             }
+        } else if (nh->nlmsg_type == RTM_DELADDR) {
+            /* Remove the address from the interface cache. */
+            struct ifaddrmsg* ifa = NLMSG_DATA(nh);
+            struct rtattr* rta = (struct rtattr*)IFA_RTA(ifa);
+            int rta_len = IFA_PAYLOAD(nh);
+
+            for (; RTA_OK(rta, rta_len); rta = RTA_NEXT(rta, rta_len)) {
+                if (rta->rta_type == IFA_LOCAL) {
+                    struct in_addr del_addr = *(struct in_addr*)RTA_DATA(rta);
+                    for (int i = 0; i < MAX_INTERFACES; i++) {
+                        if (ifaces[i].active &&
+                            ifaces[i].ifindex == ifa->ifa_index &&
+                            ifaces[i].addr.s_addr == del_addr.s_addr) {
+                            LOG_INFO("Netlink: Address removed — if %d: %s",
+                                     ifa->ifa_index, inet_ntoa(del_addr));
+                            ifaces[i].active = false;
+                            break;
+                        }
+                    }
+                }
+            }
+        } else if (nh->nlmsg_type == RTM_NEWLINK) {
+            /* Log link state changes. A production daemon would trigger FRR here
+             * via rsvp_frr_trigger(ifindex) on IFF_LOWER_UP going down. */
+            struct ifinfomsg* ifi = NLMSG_DATA(nh);
+            bool up = (ifi->ifi_flags & IFF_LOWER_UP) != 0;
+            LOG_INFO("Netlink: Link event — if %d is %s",
+                     ifi->ifi_index, up ? "UP" : "DOWN");
         }
     }
 }
@@ -330,7 +413,7 @@ int hal_mpls_install(uint32_t in_label, uint32_t out_label, int out_ifindex,
              dest_addr ? inet_ntoa(*dest_addr) : "NULL");
 
     /* Cache the route for CLI 'show mpls routes' */
-    for (int i = 0; i < MAX_INTERFACES; i++) {
+    for (int i = 0; i < MAX_MPLS_ROUTES; i++) {
         bool match = false;
         if (mpls_routes[i].active) {
             if (in_label == 0 && mpls_routes[i].in_label == 0) {
@@ -498,7 +581,7 @@ int hal_mpls_remove(uint32_t in_label, struct in_addr* dest_addr) {
              dest_addr ? inet_ntoa(*dest_addr) : "NULL");
     
     /* Update cache */
-    for (int i = 0; i < MAX_INTERFACES; i++) {
+    for (int i = 0; i < MAX_MPLS_ROUTES; i++) {
         if (mpls_routes[i].active) {
             if (in_label == 0) {
                 if (dest_addr && mpls_routes[i].dest_addr.s_addr == dest_addr->s_addr && mpls_routes[i].in_label == 0) {
@@ -590,7 +673,7 @@ int hal_mpls_remove(uint32_t in_label, struct in_addr* dest_addr) {
 void hal_mpls_dump(void) {
     printf("--- MPLS Forwarding Table ---\n");
     int count = 0;
-    for (int i = 0; i < MAX_INTERFACES; i++) {
+    for (int i = 0; i < MAX_MPLS_ROUTES; i++) {
         if (mpls_routes[i].active) {
             if (mpls_routes[i].in_label == 0) {
                 printf("In-Label: Push (0), Dest: %s, Out-Label: %u, Interface: %d, Next-Hop: %s\n",

@@ -71,10 +71,17 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
         return RSVP_ERR_INVALID_PARAM;
     }
 
-    /* Verify RSVP checksum over the entire RSVP message without mutating the buffer */
-    if (rsvp_hdr->checksum != 0) {
+    /* Verify RSVP checksum. RFC 2205 §3.1: checksum==0 means the sender chose not
+     * to compute it; accept the packet but log so operators can detect misconfigured
+     * peers that are not computing checksums. */
+    if (rsvp_hdr->checksum == 0) {
+        LOG_INFO("Parser: Zero checksum — accepted per RFC 2205 §3.1 "
+                 "(peer may have checksum disabled) [Type: %d, Len: %zu]",
+                 rsvp_hdr->msg_type, rsvp_len);
+    } else {
         if (rsvp_checksum_verify(rsvp_hdr, rsvp_len) != 0) {
-            LOG_WARN("Parser: Checksum FAILED!");
+            LOG_WARN("Parser: Checksum FAILED [Type: %d, Len: %zu]",
+                     rsvp_hdr->msg_type, rsvp_len);
             return RSVP_ERR_CHECKSUM;
         }
         LOG_DEBUG("Parser: Checksum OK");
