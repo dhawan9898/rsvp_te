@@ -156,52 +156,6 @@ int rsvp_cli_handle_input(int fd) {
             printf("  interface <name> hello-interval <ms>\n");
         }
 
-    /* ---- FRR / MBB commands --------------------------------------------- */
-    } else if (strcmp(buf, "show rsvp frr") == 0) {
-        rsvp_frr_dump();
-
-    } else if (strncmp(buf, "rsvp frr revert ", 16) == 0) {
-        unsigned int ifidx = 0;
-        if (sscanf(buf + 16, "%u", &ifidx) == 1) {
-            rsvp_frr_revert((uint32_t)ifidx);
-        } else {
-            printf("Usage: rsvp frr revert <ifindex>\n");
-        }
-
-    } else if (strncmp(buf, "rsvp mbb ", 9) == 0) {
-        /* Format: rsvp mbb <tunnel_id> <old_lsp_id> <new_lsp_id> */
-        uint32_t tunnel_id = 0, old_id = 0, new_id = 0;
-        if (sscanf(buf + 9, "%u %u %u", &tunnel_id, &old_id, &new_id) == 3) {
-            rsvp_error_t rc = rsvp_mbb_start((uint16_t)tunnel_id,
-                                              (uint16_t)old_id,
-                                              (uint16_t)new_id,
-                                              NULL, 0);
-            switch (rc) {
-                case RSVP_SUCCESS:
-                    printf("MBB: Signaling new LSPID %u for TunnelID %u — "
-                           "old LSPID %u stays active until RESV arrives.\n",
-                           new_id, tunnel_id, old_id);
-                    break;
-                case RSVP_ERR_NOT_FOUND:
-                    printf("MBB error: PSB [TunnelID %u, LSPID %u] not found.\n",
-                           tunnel_id, old_id);
-                    break;
-                case RSVP_ERR_ALREADY_EXISTS:
-                    printf("MBB error: LSPID %u already exists for TunnelID %u.\n",
-                           new_id, tunnel_id);
-                    break;
-                case RSVP_ERR_INVALID_PARAM:
-                    printf("MBB error: This node is not the ingress for "
-                           "TunnelID %u LSPID %u.\n", tunnel_id, old_id);
-                    break;
-                default:
-                    printf("MBB error: rc=%d\n", rc);
-                    break;
-            }
-        } else {
-            printf("Usage: rsvp mbb <tunnel_id> <old_lsp_id> <new_lsp_id>\n");
-        }
-
     /* ---- Tunnel commands ------------------------------------------------ */
     } else if (strncmp(buf, "delete tunnel ", 14) == 0) {
         uint32_t tunnel_id = 0, lsp_id = 0;
@@ -241,9 +195,6 @@ int rsvp_cli_handle_input(int fd) {
         printf("  interface <name> bandwidth <Mbps>\n");
         printf("  interface <name> reservable-bandwidth <Mbps>\n");
         printf("  interface <name> hello-interval <ms>\n");
-        printf("  show rsvp frr\n");
-        printf("  rsvp frr revert <ifindex>\n");
-        printf("  rsvp mbb <tunnel_id> <old_lsp_id> <new_lsp_id>\n");
         printf("  setup tunnel <src_ip> <dest_ip> <tunnel_id> <name>\n");
         printf("  delete tunnel <tunnel_id> <lsp_id>\n");
     }
