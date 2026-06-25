@@ -254,6 +254,17 @@ int rsvp_builder_add_flowspec(struct rsvp_builder* b,
                                 sizeof(wire_tspec));
 }
 
+int rsvp_builder_add_adspec(struct rsvp_builder* b, struct rsvp_adspec* adspec) {
+    if (!b || !adspec) return RSVP_ERR_INVALID_PARAM;
+    /* ADSPEC body length is encoded in adspec->length in units of 32-bit words
+     * minus 1, consistent with other RSVP variable-length objects. */
+    size_t body_len = sizeof(struct rsvp_adspec) +
+                      (size_t)((ntohs(adspec->length) + 1) * 4) -
+                      sizeof(struct rsvp_adspec);
+    return rsvp_builder_add_obj(b, RSVP_CLASS_ADSPEC, 2, adspec,
+                                sizeof(struct rsvp_adspec) + body_len);
+}
+
 int rsvp_builder_add_ero(struct rsvp_builder* b, struct rsvp_ero_ipv4_subobj* ero_list, size_t count) {
     if (!b || !ero_list || count == 0) return RSVP_ERR_INVALID_PARAM;
     size_t obj_len = count * sizeof(struct rsvp_ero_ipv4_subobj);

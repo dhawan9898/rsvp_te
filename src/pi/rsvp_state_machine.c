@@ -1677,13 +1677,17 @@ rsvp_error_t rsvp_frr_enable_protection(uint16_t tunnel_id, uint16_t lsp_id,
         return RSVP_ERR_NOT_FOUND;
     }
 
-    /* Locate the bypass PSB by scanning for tunnel_id + is_bypass_tunnel. */
+    /* Locate the bypass PSB: scan all hash buckets looking for a PSB whose
+     * tunnel_id matches and that is marked as a bypass.  O(HASH_SIZE) rather
+     * than the O(65535 * HASH_SIZE) ID-exhaustion approach. */
     struct rsvp_psb* bypass_psb = NULL;
-    for (uint16_t id = 1; id < UINT16_MAX; id++) {
-        struct rsvp_psb* candidate = rsvp_psb_find_by_id(bypass_tunnel_id, id);
-        if (candidate && candidate->is_bypass_tunnel) {
-            bypass_psb = candidate;
-            break;
+    for (int bkt = 0; bkt < 1024 && !bypass_psb; bkt++) {
+        for (struct rsvp_psb* c = rsvp_psb_find_by_bucket(bkt); c; c = c->next_hash) {
+            if (ntohs(c->key.session.tunnel_id) == bypass_tunnel_id &&
+                c->is_bypass_tunnel) {
+                bypass_psb = c;
+                break;
+            }
         }
     }
 
