@@ -23,8 +23,9 @@ typedef enum {
     RSVP_ERR_CHECKSUM = -8,         /**< A checksum validation failed. */
     RSVP_ERR_SEND_FAILED = -9,      /**< Packet transmission failed. */
     RSVP_ERR_UNKNOWN_CLASS = -10,   /**< Unknown mandatory object class (Class-Num < 128, RFC 2205 §3.10). */
-    RSVP_ERR_NO_ROUTE = -11,        /**< No route to the next hop or destination. */
-    RSVP_ERR_FRR_NOT_CONFIGURED = -12 /**< FRR requested but no bypass tunnel configured. */
+    RSVP_ERR_NO_ROUTE = -11,         /**< No route to the next hop or destination. */
+    RSVP_ERR_FRR_NOT_CONFIGURED = -12, /**< FRR requested but no bypass tunnel configured. */
+    RSVP_ERR_ALREADY_EXISTS = -13,   /**< A PSB/RSB with the given key already exists. */
 } rsvp_error_t;
 
 #endif /* RSVP_ERROR_H */
