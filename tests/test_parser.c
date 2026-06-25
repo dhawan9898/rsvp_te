@@ -68,7 +68,7 @@ static void test_parse_valid_path(void) {
     ASSERT_EQ(ntohs(info.key.session.tunnel_id), 99u, "tunnel_id = 99");
     ASSERT_EQ(info.key.sender.source_addr.s_addr, src.s_addr, "sender source_addr");
     ASSERT_EQ(ntohs(info.key.sender.lsp_id), 1u, "lsp_id = 1");
-    ASSERT_NOTNULL(info.hop_obj, "hop object parsed");
+    ASSERT_NOTNULL(info.hop_v4, "hop object parsed");
     ASSERT_NOTNULL(info.label_req, "label_request object parsed");
 }
 
@@ -153,7 +153,7 @@ static void test_parse_resv(void) {
 
     ASSERT_EQ(rc, RSVP_SUCCESS, "parse returns SUCCESS");
     ASSERT_EQ(info.common_hdr->msg_type, RSVP_MSG_RESV, "msg_type = RESV");
-    ASSERT_NOTNULL(info.label_obj, "label object parsed");
+    ASSERT_NOTNULL(info.label, "label object parsed");
 }
 
 static void test_parse_pathtear(void) {
@@ -196,10 +196,10 @@ static void test_parse_ero_single_hop(void) {
 
     struct rsvp_ero_ipv4_subobj ero[1];
     memset(ero, 0, sizeof(ero));
-    ero[0].l_type  = 0x01; /* strict, IPv4 */
-    ero[0].length  = 8;
-    ero[0].address = hop;
-    ero[0].prefix  = 32;
+    ero[0].type       = 0x01; /* strict, IPv4 */
+    ero[0].length     = 8;
+    ero[0].addr       = hop;
+    ero[0].prefix_len = 32;
 
     uint8_t rsvp[256];
     struct rsvp_builder b;
@@ -222,8 +222,8 @@ static void test_parse_ero_single_hop(void) {
     memset(&info, 0, sizeof(info));
     rsvp_parse_packet(pkt, sizeof(struct iphdr) + rsvp_len, &info);
 
-    ASSERT_GT(info.ero_count, 0u, "ERO hop count > 0");
-    ASSERT_EQ(info.ero[0].address.s_addr, hop.s_addr, "ERO first hop address correct");
+    ASSERT_GT(info.ero_len, 0u, "ERO length > 0");
+    ASSERT_EQ(info.ero[0].addr.s_addr, hop.s_addr, "ERO first hop address correct");
 }
 
 static void test_parse_truncated_rejected(void) {
