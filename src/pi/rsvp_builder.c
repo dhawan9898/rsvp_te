@@ -44,10 +44,14 @@ int rsvp_builder_add_obj(struct rsvp_builder* b, uint8_t class_num,
         return -1;
     }
 
-    /* Populate the RSVP object header */
+    /* Populate the RSVP object header.
+     * RFC 2205 §3.1.2: the Length field carries the TRUE (unpadded) byte count
+     * of header + data.  Writing the aligned length would inflate it by up to
+     * 3 bytes and cause every conformant receiver to mis-parse subsequent objects.
+     */
     struct rsvp_obj_hdr* obj_hdr =
         (struct rsvp_obj_hdr*)(b->buffer + b->offset);
-    obj_hdr->length = htons(aligned_len);
+    obj_hdr->length = htons((uint16_t)obj_total_len);
     obj_hdr->class_num = class_num;
     obj_hdr->c_type = c_type;
 
@@ -80,19 +84,26 @@ int rsvp_builder_add_session_ipv6(struct rsvp_builder* b, struct in6_addr* dest,
     return rsvp_builder_add_obj(b, RSVP_CLASS_SESSION, 8, &sess, sizeof(sess));
 }
 
-int rsvp_builder_add_session_attribute(struct rsvp_builder* b,
-                                       const char* name) {
+int rsvp_builder_add_session_attribute(struct rsvp_builder* b, const char* name) {
+    return rsvp_builder_add_session_attribute_ex(b, name, 0, 0,
+                                                  RSVP_SESSATTR_SE_STYLE);
+}
+
+int rsvp_builder_add_session_attribute_ex(struct rsvp_builder* b,
+                                           const char* name,
+                                           uint8_t setup_prio,
+                                           uint8_t holding_prio,
+                                           uint8_t flags) {
     uint8_t buf[300] = {0};
     struct rsvp_session_attribute* attr = (struct rsvp_session_attribute*)buf;
 
-    /* Validate and optionally truncate the session name length */
     size_t name_len_full = name ? strlen(name) : 0;
     uint8_t name_len = (name_len_full > 255) ? 255 : (uint8_t)name_len_full;
 
-    attr->setup_prio = 0;   /* Wireshark shows SetupPrio 0 */
-    attr->holding_prio = 0; /* Wireshark shows HoldPrio 0 */
-    attr->flags = 0x04;     /* Wireshark shows SE Style flag 0x04 */
-    attr->name_length = name_len;
+    attr->setup_prio   = setup_prio;
+    attr->holding_prio = holding_prio;
+    attr->flags        = flags;
+    attr->name_length  = name_len;
 
     if (name_len > 0) {
         memcpy(attr->name, name, name_len);
@@ -100,6 +111,32 @@ int rsvp_builder_add_session_attribute(struct rsvp_builder* b,
 
     size_t obj_len = sizeof(struct rsvp_session_attribute) + name_len;
     return rsvp_builder_add_obj(b, RSVP_CLASS_SESSION_ATTRIB, 7, attr, obj_len);
+}
+
+int rsvp_builder_add_fast_reroute(struct rsvp_builder* b,
+                                   uint8_t setup_prio, uint8_t holding_prio,
+                                   uint8_t hop_limit, uint8_t flags,
+                                   float bandwidth) {
+    struct rsvp_fast_reroute frr;
+    memset(&frr, 0, sizeof(frr));
+    frr.setup_prio   = setup_prio;
+    frr.holding_prio = holding_prio;
+    frr.hop_limit    = hop_limit;
+    frr.flags        = flags;
+    frr.bandwidth    = rsvp_float_to_net(bandwidth);
+    frr.include_any  = 0;
+    frr.exclude_any  = 0;
+    frr.include_all  = 0;
+    return rsvp_builder_add_obj(b, RSVP_CLASS_FAST_REROUTE, 1, &frr, sizeof(frr));
+}
+
+int rsvp_builder_add_detour(struct rsvp_builder* b,
+                             struct in_addr* plr_id,
+                             struct in_addr* avoid_node_id) {
+    struct rsvp_detour_ipv4 det;
+    det.plr_id        = *plr_id;
+    det.avoid_node_id = *avoid_node_id;
+    return rsvp_builder_add_obj(b, RSVP_CLASS_DETOUR, 7, &det, sizeof(det));
 }
 
 int rsvp_builder_add_hop_ipv4(struct rsvp_builder* b, struct in_addr* neighbor,

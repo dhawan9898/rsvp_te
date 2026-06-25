@@ -45,10 +45,41 @@
 #define RSVP_CLASS_SESSION_ATTRIB 207
 /** @} */
 
-/** @name ERO Subobjects (RFC 3209)
+/** @name RSVP Object Classes — FRR extensions (RFC 4090)
  *  @{
  */
-#define RSVP_ERO_IPV4 1
+#define RSVP_CLASS_FAST_REROUTE 205 /**< FAST_REROUTE object — requests FRR protection */
+#define RSVP_CLASS_DETOUR       63  /**< DETOUR object — identifies PLR and avoided node */
+/** @} */
+
+/** @name ERO / RRO Subobject Types (RFC 3209)
+ *  @{
+ */
+#define RSVP_ERO_IPV4 1 /**< IPv4 prefix subobject */
+/** @} */
+
+/** @name ERO Subobject flags
+ *  @{
+ */
+#define RSVP_ERO_LOOSE  0x80 /**< Bit 7 set → loose hop; clear → strict hop */
+/** @} */
+
+/** @name SESSION_ATTRIBUTE flags (RFC 3209 §4.7.2 + RFC 4090 §4.2)
+ *  @{
+ */
+#define RSVP_SESSATTR_LOCAL_PROT_DESIRED  0x01 /**< Request local protection at each hop */
+#define RSVP_SESSATTR_LABEL_RECORDING     0x02 /**< Request label recording in RRO */
+#define RSVP_SESSATTR_SE_STYLE            0x04 /**< Shared-Explicit merge style desired */
+#define RSVP_SESSATTR_LOCAL_PROT_IN_USE   0x08 /**< FRR: local protection is currently active */
+#define RSVP_SESSATTR_NODE_PROTECTION     0x10 /**< FRR: node protection is in use */
+#define RSVP_SESSATTR_BW_PROTECTION       0x20 /**< FRR: bandwidth protection is in use */
+/** @} */
+
+/** @name FAST_REROUTE object flags (RFC 4090 §4.1)
+ *  @{
+ */
+#define RSVP_FRR_FLAG_ONE_TO_ONE 0x01 /**< One-to-one backup (detour LSP per protected LSP) */
+#define RSVP_FRR_FLAG_FACILITY   0x02 /**< Facility backup (shared bypass tunnel) */
 /** @} */
 
 /**
@@ -275,6 +306,31 @@ struct rsvp_label_ipv4 {
 #define RSVP_PROTO_ERR_RSVP_SYSTEM_ERROR 22
 #define RSVP_PROTO_ERR_ROUTING_PROBLEM 24
 /** @} */
+
+/**
+ * @brief FAST_REROUTE Object payload (RFC 4090 §4.1, Class 205, C-Type 1).
+ * @details Carried in PATH messages to request FRR protection at transit LSRs.
+ *          The bandwidth field uses the same IEEE 754 encoding as SENDER_TSPEC.
+ */
+struct rsvp_fast_reroute {
+    uint8_t  setup_prio;   /**< Setup priority for bypass/detour LSP */
+    uint8_t  holding_prio; /**< Holding priority for bypass/detour LSP */
+    uint8_t  hop_limit;    /**< Maximum number of hops for backup path */
+    uint8_t  flags;        /**< RSVP_FRR_FLAG_ONE_TO_ONE or RSVP_FRR_FLAG_FACILITY */
+    uint32_t bandwidth;    /**< Bandwidth to protect (IEEE float, network byte order) */
+    uint32_t include_any;  /**< Include-any affinity constraint */
+    uint32_t exclude_any;  /**< Exclude-any affinity constraint */
+    uint32_t include_all;  /**< Include-all affinity constraint */
+} __attribute__((packed));
+
+/**
+ * @brief DETOUR Object payload — IPv4 (RFC 4090 §4.2, Class 63, C-Type 7).
+ * @details Identifies the Point of Local Repair and the avoided node/link.
+ */
+struct rsvp_detour_ipv4 {
+    struct in_addr plr_id;        /**< IPv4 address of the Point of Local Repair */
+    struct in_addr avoid_node_id; /**< IPv4 address of the avoided node */
+} __attribute__((packed));
 
 /**
  * @brief SESSION_ATTRIBUTE Object (C-Type 7).

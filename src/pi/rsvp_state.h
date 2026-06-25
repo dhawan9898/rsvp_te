@@ -15,6 +15,15 @@
 #define MAX_ERO_HOPS 32
 #define MAX_RRO_HOPS 32
 
+/**
+ * @brief FRR protection mode for an LSP (RFC 4090).
+ */
+typedef enum {
+    RSVP_FRR_NONE        = 0, /**< No FRR protection requested */
+    RSVP_FRR_ONE_TO_ONE  = 1, /**< One-to-one backup: a dedicated detour LSP per protected LSP */
+    RSVP_FRR_FACILITY    = 2, /**< Facility backup: traffic rerouted through a shared bypass tunnel */
+} rsvp_frr_mode_t;
+
 /* Forward declarations */
 struct rsvp_psb;
 struct rsvp_rsb;
@@ -52,18 +61,27 @@ struct rsvp_psb {
     uint8_t holding_prio;                          /**< Holding Priority */
 
     /* State Management */
-    rsvp_timer_t cleanup_timer; /**< Timer for expiring the state */
-    rsvp_timer_t refresh_timer; /**< Timer for sending periodic refresh messages */
-    uint32_t refresh_ms;        /**< Configured refresh interval in milliseconds */
-    uint8_t ttl;                /**< IP TTL value to use for outbound packets */
-    uint8_t refresh_count;      /**< Number of refreshes sent */
-    bool is_ingress;            /**< Flag indicating if this node is the ingress for the LSP */
+    rsvp_timer_t cleanup_timer; /**< Timer for expiring the state if no refresh arrives */
+    rsvp_timer_t refresh_timer; /**< Timer for sending periodic PATH refresh messages */
+    uint32_t refresh_ms;        /**< Negotiated refresh interval in milliseconds */
+    uint8_t ttl;                /**< IP TTL copied from the received PATH; used for forwarded messages */
+    uint8_t refresh_count;      /**< Number of refresh cycles completed without state change */
+    bool is_ingress;            /**< True when this node originated the PATH (head-end role) */
 
-    /* Chaining for Hash Table and Interface Lists */
-    struct rsvp_psb* next_hash; /**< Next PSB in the hash bucket */
-    struct rsvp_psb* next_if;   /**< Next PSB associated with the same interface */
+    /* Fast ReRoute state (RFC 4090) */
+    rsvp_frr_mode_t frr_mode;        /**< Protection mode negotiated for this LSP */
+    bool is_bypass_tunnel;           /**< True when this PSB represents a bypass/detour tunnel itself */
+    bool frr_active;                 /**< True once FRR has triggered and traffic uses the backup path */
+    uint16_t bypass_tunnel_id;       /**< Tunnel ID of the bypass PSB used in facility mode */
+    struct rsvp_psb* bypass_psb;     /**< Direct pointer to the pre-established bypass PSB (facility mode) */
+    uint32_t frr_bandwidth;          /**< Bandwidth (bps) this LSP needs protected */
+    uint32_t frr_protected_ifindex;  /**< Egress interface this bypass covers (0 if not a bypass) */
 
-    struct rsvp_rsb* associated_rsb; /**< Pointer to the matching RSB, if one exists */
+    /* Chaining for Hash Table */
+    struct rsvp_psb* next_hash; /**< Next PSB in the same hash bucket */
+    struct rsvp_psb* next_if;   /**< Next PSB sharing the same ingress interface */
+
+    struct rsvp_rsb* associated_rsb; /**< Matching RSB, or NULL if no reservation yet */
 };
 
 /**

@@ -70,6 +70,11 @@ struct rsvp_psb* rsvp_psb_find(struct rsvp_path_key* key) {
     return NULL;
 }
 
+struct rsvp_psb* rsvp_psb_find_by_bucket(int bucket) {
+    if (bucket < 0 || bucket >= HASH_SIZE) return NULL;
+    return psb_table[bucket];
+}
+
 struct rsvp_psb* rsvp_psb_find_by_id(uint16_t tunnel_id, uint16_t lsp_id) {
     /* Perform a linear scan since the hash function uses full path key */
     for (int i = 0; i < HASH_SIZE; i++) {
@@ -114,23 +119,28 @@ void rsvp_psb_delete(struct rsvp_psb* psb) {
     char src_buf[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &psb->key.session.dest_addr, dest_buf, sizeof(dest_buf));
     inet_ntop(AF_INET, &psb->key.sender.source_addr, src_buf, sizeof(src_buf));
-    
-    LOG_DEBUG("Deleting PSB: Tunnel ID %d, Dest %s, Source %s", 
+
+    LOG_DEBUG("Deleting PSB: Tunnel ID %d, Dest %s, Source %s",
               ntohs(psb->key.session.tunnel_id), dest_buf, src_buf);
 
     uint32_t h = rsvp_key_hash(&psb->key);
     struct rsvp_psb** prev = &psb_table[h];
     struct rsvp_psb* curr = psb_table[h];
 
-    /* Find and remove the PSB from the linked list */
     while (curr) {
         if (curr == psb) {
             *prev = curr->next_hash;
-            
-            /* Industrial safety: Ensure timers are stopped before freeing memory */
+
+            /* Stop timers before freeing to prevent callbacks firing on freed memory. */
             rsvp_timer_stop(&psb->refresh_timer);
             rsvp_timer_stop(&psb->cleanup_timer);
-            
+
+            /* Break the cross-pointer so any in-flight RSB callback that reads
+             * associated_psb does not dereference freed memory. */
+            if (psb->associated_rsb) {
+                psb->associated_rsb->associated_psb = NULL;
+            }
+
             if (psb->lsp_name) free(psb->lsp_name);
             free(psb);
             return;
@@ -191,15 +201,19 @@ void rsvp_rsb_delete(struct rsvp_rsb* rsb) {
     struct rsvp_rsb** prev = &rsb_table[h];
     struct rsvp_rsb* curr = rsb_table[h];
 
-    /* Find and remove the RSB from the linked list */
     while (curr) {
         if (curr == rsb) {
             *prev = curr->next_hash;
-            
-            /* Industrial safety: Ensure timers are stopped before freeing memory */
+
             rsvp_timer_stop(&rsb->refresh_timer);
             rsvp_timer_stop(&rsb->cleanup_timer);
-            
+
+            /* Break the cross-pointer so any in-flight PSB callback that reads
+             * associated_rsb does not dereference freed memory. */
+            if (rsb->associated_psb) {
+                rsb->associated_psb->associated_rsb = NULL;
+            }
+
             free(rsb);
             return;
         }

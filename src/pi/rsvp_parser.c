@@ -111,13 +111,26 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
 
             case RSVP_CLASS_SESSION:
                 if (info->sess_v4) break;
-                if ((obj_hdr->c_type == 1 || obj_hdr->c_type == 7) &&
+                /* RFC 3209 §4.6.1: RSVP-TE uses C-Type 7 (LSP_TUNNEL_IPv4).
+                 * C-Type 1 (plain IPv4, RFC 2205) has a different wire layout
+                 * (destination + protocol + port) and must NOT be interpreted
+                 * as an LSP_TUNNEL SESSION — doing so would corrupt tunnel_id
+                 * and extended_tunnel_id.  Reject C-Type 1 silently here;
+                 * the mandatory-object check below will trigger if no SESSION
+                 * was accepted.
+                 */
+                if (obj_hdr->c_type == 7 &&
                     obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_session_ipv4)) {
                     info->sess_v4 = (struct rsvp_session_ipv4*)obj_data;
                     memcpy(&info->key.session, info->sess_v4, sizeof(struct rsvp_session_ipv4));
                     char dest_str[INET_ADDRSTRLEN];
                     inet_ntop(AF_INET, &info->sess_v4->dest_addr, dest_str, sizeof(dest_str));
-                    LOG_DEBUG("  - SESSION IPv4: Dest %s, TunnelID %d", dest_str, ntohs(info->sess_v4->tunnel_id));
+                    LOG_DEBUG("  - SESSION IPv4 (LSP_TUNNEL, C-Type 7): Dest %s, TunnelID %d",
+                              dest_str, ntohs(info->sess_v4->tunnel_id));
+                } else if (obj_hdr->c_type != 7) {
+                    LOG_WARN("Parser: SESSION object has unsupported C-Type %d "
+                             "(expected 7 for LSP_TUNNEL_IPv4) — skipping",
+                             obj_hdr->c_type);
                 }
                 break;
 
@@ -237,38 +250,93 @@ rsvp_error_t rsvp_parse_packet(const uint8_t* buffer, size_t len,
                 if (info->sess_attr) break;
                 if (obj_hdr->c_type == 7 &&
                     obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_session_attribute)) {
-                    info->sess_attr = (struct rsvp_session_attribute*)obj_data;
                     size_t data_len = obj_len - sizeof(struct rsvp_obj_hdr);
+                    /* Guard: data_len must be at least the fixed struct size before
+                     * reading name_length, to avoid an underflow on the subtraction below. */
+                    if (data_len < sizeof(struct rsvp_session_attribute)) {
+                        LOG_WARN("Parser: SESSION_ATTRIB data too short (%zu bytes), skipping", data_len);
+                        break;
+                    }
+                    info->sess_attr = (struct rsvp_session_attribute*)obj_data;
                     if (info->sess_attr->name_length > 0) {
                         size_t nlen = info->sess_attr->name_length;
-                        /* Safety check: ensure name doesn't exceed object length */
-                        if (sizeof(struct rsvp_session_attribute) + nlen > data_len) {
-                            LOG_WARN("Parser: SESSION_ATTRIB name length %zu exceeds object data length %zu", nlen, data_len - sizeof(struct rsvp_session_attribute));
-                            nlen = data_len - sizeof(struct rsvp_session_attribute);
+                        size_t available = data_len - sizeof(struct rsvp_session_attribute);
+                        if (nlen > available) {
+                            LOG_WARN("Parser: SESSION_ATTRIB name_length %zu > available bytes %zu — clamping",
+                                     nlen, available);
+                            nlen = available;
                         }
                         if (nlen >= sizeof(info->lsp_name)) nlen = sizeof(info->lsp_name) - 1;
                         memcpy(info->lsp_name, info->sess_attr->name, nlen);
                         info->lsp_name[nlen] = '\0';
-                        LOG_DEBUG("  - SESSION ATTRIB: Name %s", info->lsp_name);
+                        LOG_DEBUG("  - SESSION_ATTRIB: SetupPrio %u, HoldPrio %u, Flags 0x%02x, Name '%s'",
+                                  info->sess_attr->setup_prio, info->sess_attr->holding_prio,
+                                  info->sess_attr->flags, info->lsp_name);
+                    } else {
+                        LOG_DEBUG("  - SESSION_ATTRIB: SetupPrio %u, HoldPrio %u, Flags 0x%02x (no name)",
+                                  info->sess_attr->setup_prio, info->sess_attr->holding_prio,
+                                  info->sess_attr->flags);
                     }
                 }
                 break;
 
+            case RSVP_CLASS_FAST_REROUTE:
+                /* RFC 4090 §4.1 — Class 205.  Class-Num ≥ 192 means "ignore if unknown",
+                 * but we do support it: parse C-Type 1 (IPv4). */
+                if (info->fast_reroute) break;
+                if (obj_hdr->c_type == 1 &&
+                    obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_fast_reroute)) {
+                    info->fast_reroute = (struct rsvp_fast_reroute*)obj_data;
+                    LOG_DEBUG("  - FAST_REROUTE: SetupPrio %u, HoldPrio %u, HopLimit %u, Flags 0x%02x",
+                              info->fast_reroute->setup_prio, info->fast_reroute->holding_prio,
+                              info->fast_reroute->hop_limit, info->fast_reroute->flags);
+                }
+                break;
+
+            case RSVP_CLASS_DETOUR:
+                /* RFC 4090 §4.2 — Class 63.  C-Type 7 for IPv4 PLR/avoid-node pair. */
+                if (info->detour) break;
+                if (obj_hdr->c_type == 7 &&
+                    obj_len >= sizeof(struct rsvp_obj_hdr) + sizeof(struct rsvp_detour_ipv4)) {
+                    info->detour = (struct rsvp_detour_ipv4*)obj_data;
+                    char plr_str[INET_ADDRSTRLEN], avoid_str[INET_ADDRSTRLEN];
+                    inet_ntop(AF_INET, &info->detour->plr_id,        plr_str,   sizeof(plr_str));
+                    inet_ntop(AF_INET, &info->detour->avoid_node_id, avoid_str, sizeof(avoid_str));
+                    LOG_DEBUG("  - DETOUR: PLR %s, AvoidNode %s", plr_str, avoid_str);
+                }
+                break;
+
             default:
-                /* Handle unrecognized objects according to RFC 2205 class number rules */
+                /* RFC 2205 §3.10: class-number encoding determines treatment of unknown objects.
+                 *   0–127  → reject the entire message and send PathErr/ResvErr
+                 *   128–191 → ignore the object but forward the message
+                 *   192–255 → ignore the object and do NOT forward
+                 */
                 if (obj_hdr->class_num < 128) {
-                    LOG_WARN("Parser: Unhandled object class %d (Class-Num < 128). Rejecting message.", obj_hdr->class_num);
-                    return RSVP_PROTO_ERR_UNKNOWN_OBJECT_CLASS;
+                    LOG_WARN("Parser: Unknown mandatory object class %d (Class-Num < 128) — rejecting message",
+                             obj_hdr->class_num);
+                    return RSVP_ERR_UNKNOWN_CLASS;
                 } else if (obj_hdr->class_num < 192) {
-                    LOG_DEBUG("  - Unhandled object class %d (Ignore and forward)", obj_hdr->class_num);
+                    LOG_DEBUG("  - Unknown class %d (128–191): ignore and forward", obj_hdr->class_num);
                 } else {
-                    LOG_DEBUG("  - Unhandled object class %d (Ignore and drop)", obj_hdr->class_num);
+                    LOG_DEBUG("  - Unknown class %d (192–255): ignore and do not forward", obj_hdr->class_num);
                 }
                 break;
         }
 
-        if (aligned_obj_len == 0) break;
-        if (aligned_obj_len > remaining) break;
+        /* Advance by the aligned length.  The aligned length must be at least
+         * sizeof(rsvp_obj_hdr) so the loop always terminates. */
+        if (aligned_obj_len == 0) {
+            LOG_WARN("Parser: Zero aligned_obj_len for class %d — aborting parse to prevent infinite loop",
+                     obj_hdr->class_num);
+            return RSVP_ERR_MALFORMED_OBJ;
+        }
+        if (aligned_obj_len > remaining) {
+            /* The padding for the last object exceeds remaining bytes; this is
+             * only valid when obj_len fits (already checked above) but the tail
+             * padding pushes past the end.  Stop cleanly — we already stored the object. */
+            break;
+        }
 
         obj_ptr += aligned_obj_len;
         remaining -= aligned_obj_len;

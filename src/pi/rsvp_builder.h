@@ -73,13 +73,59 @@ int rsvp_builder_add_session_ipv6(struct rsvp_builder* b, struct in6_addr* dest,
                                   struct in6_addr* ext_tunnel_id);
 
 /**
- * @brief Add a Session Attribute object.
+ * @brief Add a SESSION_ATTRIBUTE object with default priorities and SE-style flag.
  * @param [in,out] b Pointer to the builder context.
- * @param [in] name The display name for the session.
+ * @param [in] name Optional LSP display name (may be NULL).
  * @return 0 on success, or an error code.
  */
-int rsvp_builder_add_session_attribute(struct rsvp_builder* b,
-                                       const char* name);
+int rsvp_builder_add_session_attribute(struct rsvp_builder* b, const char* name);
+
+/**
+ * @brief Add a SESSION_ATTRIBUTE object with explicit priorities and flags.
+ * @details Use this variant to set FRR-related flags such as
+ *          RSVP_SESSATTR_LOCAL_PROT_DESIRED or RSVP_SESSATTR_LOCAL_PROT_IN_USE.
+ * @param [in,out] b Pointer to the builder context.
+ * @param [in] name Optional LSP display name (may be NULL).
+ * @param [in] setup_prio Setup priority (0 = highest).
+ * @param [in] holding_prio Holding priority (0 = highest).
+ * @param [in] flags Bitfield of RSVP_SESSATTR_* flags.
+ * @return 0 on success, or an error code.
+ */
+int rsvp_builder_add_session_attribute_ex(struct rsvp_builder* b,
+                                           const char* name,
+                                           uint8_t setup_prio,
+                                           uint8_t holding_prio,
+                                           uint8_t flags);
+
+/**
+ * @brief Add a FAST_REROUTE object (RFC 4090 §4.1, Class 205 C-Type 1).
+ * @details Included in PATH messages by ingress nodes to request FRR protection
+ *          at PLR nodes along the path.
+ * @param [in,out] b Pointer to the builder context.
+ * @param [in] setup_prio Setup priority for the backup path.
+ * @param [in] holding_prio Holding priority for the backup path.
+ * @param [in] hop_limit Maximum hops allowed on the backup path.
+ * @param [in] flags RSVP_FRR_FLAG_ONE_TO_ONE or RSVP_FRR_FLAG_FACILITY.
+ * @param [in] bandwidth Bandwidth to protect in bytes/sec (host float).
+ * @return 0 on success, or an error code.
+ */
+int rsvp_builder_add_fast_reroute(struct rsvp_builder* b,
+                                   uint8_t setup_prio, uint8_t holding_prio,
+                                   uint8_t hop_limit, uint8_t flags,
+                                   float bandwidth);
+
+/**
+ * @brief Add a DETOUR object (RFC 4090 §4.2, Class 63 C-Type 7).
+ * @details Carried in detour (one-to-one backup) PATH messages to identify
+ *          the PLR and the node being avoided.
+ * @param [in,out] b Pointer to the builder context.
+ * @param [in] plr_id IPv4 address of the Point of Local Repair.
+ * @param [in] avoid_node_id IPv4 address of the node or link endpoint to avoid.
+ * @return 0 on success, or an error code.
+ */
+int rsvp_builder_add_detour(struct rsvp_builder* b,
+                             struct in_addr* plr_id,
+                             struct in_addr* avoid_node_id);
 
 /**
  * @brief Add an IPv4 RSVP_HOP object.

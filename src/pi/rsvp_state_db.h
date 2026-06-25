@@ -97,6 +97,16 @@ struct rsvp_bsb* rsvp_bsb_create(struct rsvp_path_key* key);
 void rsvp_bsb_delete(struct rsvp_bsb* bsb);
 
 /**
+ * @brief Return the first PSB in a given hash bucket.
+ * @details Used by the FRR trigger and graceful shutdown to iterate over all
+ *          active PSBs.  The hash table has 1024 buckets (indices 0–1023).
+ *          Callers must save psb->next_hash before modifying the list.
+ * @param [in] bucket  Hash bucket index (0 to 1023).
+ * @return Pointer to the first PSB in the bucket, or NULL if empty.
+ */
+struct rsvp_psb* rsvp_psb_find_by_bucket(int bucket);
+
+/**
  * @brief Dump all Path State Blocks (PSBs) to standard output.
  * @details Useful for debugging and CLI 'show' commands.
  */
