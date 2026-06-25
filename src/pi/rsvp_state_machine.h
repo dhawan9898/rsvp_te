@@ -101,6 +101,45 @@ rsvp_error_t rsvp_frr_enable_protection(uint16_t tunnel_id, uint16_t lsp_id,
 void rsvp_frr_trigger(uint32_t failed_ifindex);
 
 /**
+ * @brief Start a Make-Before-Break re-signaling operation (RFC 3209 §6.6).
+ * @details Creates a new LSP sharing the same Session (tunnel_id) but carrying a fresh
+ *          LSP-ID.  The old LSP remains fully active and forwarding traffic while the
+ *          new one is being established.  The moment the new LSP's first RESV is
+ *          installed, the old path is torn down automatically so there is zero traffic
+ *          loss at the handover point.
+ * @param [in] tunnel_id  Tunnel ID shared by both paths.
+ * @param [in] old_lsp_id LSP-ID of the current active (incumbent) path.
+ * @param [in] new_lsp_id Fresh LSP-ID for the replacement path.
+ * @param [in] new_ero    New explicit route subobject array (NULL to inherit the old ERO).
+ * @param [in] ero_count  Number of entries in @p new_ero (0 when new_ero is NULL).
+ * @return RSVP_SUCCESS on success, RSVP_ERR_NOT_FOUND if the old PSB is missing,
+ *         RSVP_ERR_ALREADY_EXISTS if a PSB with new_lsp_id already exists, or
+ *         RSVP_ERR_MEM_ALLOC if the new PSB cannot be allocated.
+ */
+rsvp_error_t rsvp_mbb_start(uint16_t tunnel_id, uint16_t old_lsp_id,
+                              uint16_t new_lsp_id,
+                              struct rsvp_ero_ipv4_subobj* new_ero,
+                              uint8_t ero_count);
+
+/**
+ * @brief Revert FRR switchover after a failed interface has recovered.
+ * @details For every PSB whose traffic was rerouted via FRR (frr_active == true)
+ *          and whose original egress was @p recovered_ifindex, this function
+ *          restores the original MPLS forwarding entry, clears frr_active, and
+ *          re-sends PATH without the LOCAL_PROTECTION_IN_USE flag so that upstream
+ *          and downstream nodes update their RRO state accordingly.
+ * @param [in] recovered_ifindex  Interface index that has come back up.
+ */
+void rsvp_frr_revert(uint32_t recovered_ifindex);
+
+/**
+ * @brief Print FRR protection status for all active LSPs.
+ * @details Dumps a table of protected LSPs showing their bypass tunnel, current
+ *          FRR state (armed / active / none), and the protected interface index.
+ */
+void rsvp_frr_dump(void);
+
+/**
  * @brief Gracefully tear down all active LSPs and release all resources.
  * @details Sends PathTear and ResvTear for every active PSB/RSB, releases labels,
  *          removes MPLS entries, and stops all timers.  Should be called on

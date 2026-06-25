@@ -55,6 +55,9 @@ static void propagate_resv_err(struct rsvp_rsb* rsb,
 static void send_path_downstream(struct rsvp_psb* psb);
 static void rsvp_psb_cleanup(struct rsvp_psb* psb, bool propagate);
 static void rsvp_rsb_cleanup(struct rsvp_rsb* rsb, bool propagate);
+static void rsvp_frr_auto_associate(struct rsvp_psb* psb);
+static void rsvp_frr_auto_associate_all(uint32_t protected_ifindex);
+static void rsvp_mbb_complete(struct rsvp_psb* new_psb);
 
 /* ---- Internal helpers --------------------------------------------------- */
 
@@ -697,6 +700,12 @@ static void handle_path_message(struct rsvp_message_info* info) {
                  "[TunnelID: %d]",
                  next_str, next_ifindex, ntohs(info->key.session.tunnel_id));
         send_path_downstream(psb);
+
+        /* send_path_downstream() sets ifindex_out; now try to arm FRR if a ready
+         * bypass already exists for that egress interface. */
+        if (psb->frr_mode == RSVP_FRR_FACILITY &&
+            !psb->is_bypass_tunnel && psb->bypass_psb == NULL)
+            rsvp_frr_auto_associate(psb);
     }
 }
 
@@ -891,6 +900,16 @@ static void handle_resv_message(struct rsvp_message_info* info) {
                          "[TunnelID: %d]",
                          ntohs(rsb->key.session.tunnel_id));
             }
+
+            /* When a bypass tunnel receives its first valid label, auto-arm all
+             * protected LSPs on the same egress interface that were waiting. */
+            if (psb->is_bypass_tunnel && (is_new || label_changed))
+                rsvp_frr_auto_associate_all(psb->frr_protected_ifindex);
+
+            /* MBB: once the replacement path has a reservation, tear down the
+             * incumbent path and clear the MBB flag. */
+            if (psb->is_mbb_pending && is_new)
+                rsvp_mbb_complete(psb);
         }
     } else {
         /* Soft-state refresh with no change. */
@@ -1540,6 +1559,98 @@ static void rsb_cleanup_timer_cb(void* arg) {
 }
 
 /* =========================================================================
+ * FRR Auto-Associate helpers
+ * ========================================================================= */
+
+/* Scan the PSB table for a ready bypass tunnel covering psb's egress interface
+ * and arm FRR protection for it.  Called on every PATH that arrives with a
+ * FAST_REROUTE (facility) object, immediately after send_path_downstream()
+ * sets ifindex_out. */
+static void rsvp_frr_auto_associate(struct rsvp_psb* psb) {
+    if (!psb || psb->frr_mode != RSVP_FRR_FACILITY ||
+        psb->bypass_psb != NULL || psb->ifindex_out == 0 ||
+        psb->is_bypass_tunnel)
+        return;
+
+    for (int bkt = 0; bkt < 1024; bkt++) {
+        for (struct rsvp_psb* c = rsvp_psb_find_by_bucket(bkt); c; c = c->next_hash) {
+            if (!c->is_bypass_tunnel) continue;
+            if (c->frr_protected_ifindex != psb->ifindex_out) continue;
+
+            struct rsvp_rsb* brsb = rsvp_rsb_find(&c->key);
+            if (!brsb || brsb->label_out == 0) continue;
+
+            psb->bypass_psb       = c;
+            psb->bypass_tunnel_id = ntohs(c->key.session.tunnel_id);
+
+            LOG_INFO("FRR: Auto-armed TunnelID %u → bypass TunnelID %u "
+                     "(egress ifindex %u, bypass_label_out %u)",
+                     ntohs(psb->key.session.tunnel_id),
+                     psb->bypass_tunnel_id,
+                     psb->ifindex_out,
+                     brsb->label_out);
+            return;
+        }
+    }
+
+    LOG_DEBUG("FRR: No ready bypass tunnel for TunnelID %u (egress ifindex %u) — "
+              "protection deferred until bypass comes UP",
+              ntohs(psb->key.session.tunnel_id), psb->ifindex_out);
+}
+
+/* When a bypass tunnel's RESV is first installed (label_out becomes valid),
+ * scan all PSBs that egress on the protected interface and arm any that are
+ * waiting for a bypass but haven't been associated yet. */
+static void rsvp_frr_auto_associate_all(uint32_t protected_ifindex) {
+    int armed = 0;
+    for (int bkt = 0; bkt < 1024; bkt++) {
+        for (struct rsvp_psb* c = rsvp_psb_find_by_bucket(bkt); c; c = c->next_hash) {
+            if (c->is_bypass_tunnel) continue;
+            if (c->frr_mode != RSVP_FRR_FACILITY) continue;
+            if (c->ifindex_out != protected_ifindex) continue;
+            if (c->bypass_psb != NULL) continue;  /* already armed */
+
+            rsvp_frr_auto_associate(c);
+            if (c->bypass_psb) armed++;
+        }
+    }
+    if (armed)
+        LOG_INFO("FRR: Auto-armed %d LSP(s) after bypass came UP on ifindex %u",
+                 armed, protected_ifindex);
+}
+
+/* =========================================================================
+ * MBB helper
+ * ========================================================================= */
+
+/* Called by handle_resv_message() the first time the "new" MBB path receives
+ * a RESV.  Traffic can now flow on the new path so we tear down the old one. */
+static void rsvp_mbb_complete(struct rsvp_psb* new_psb) {
+    uint16_t tunnel_id  = ntohs(new_psb->key.session.tunnel_id);
+    uint16_t new_lsp_id = ntohs(new_psb->key.sender.lsp_id);
+    uint16_t old_lsp_id = new_psb->mbb_old_lsp_id;
+
+    LOG_INFO("MBB: New LSP [TunnelID %u, LSPID %u] has reservation — "
+             "tearing down old LSPID %u to complete Make-Before-Break",
+             tunnel_id, new_lsp_id, old_lsp_id);
+
+    struct rsvp_psb* old_psb = rsvp_psb_find_by_id(tunnel_id, old_lsp_id);
+    if (old_psb) {
+        /* propagate=true → sends PathTear downstream before freeing */
+        rsvp_psb_cleanup(old_psb, true);
+        LOG_INFO("MBB: Old LSP [TunnelID %u, LSPID %u] torn down — "
+                 "MBB operation complete", tunnel_id, old_lsp_id);
+    } else {
+        LOG_WARN("MBB: Old PSB [TunnelID %u, LSPID %u] not found — "
+                 "already torn down?", tunnel_id, old_lsp_id);
+    }
+
+    /* Clear MBB state — the new PSB is now the active incumbent. */
+    new_psb->is_mbb_pending = false;
+    new_psb->mbb_old_lsp_id = 0;
+}
+
+/* =========================================================================
  * Public API
  * ========================================================================= */
 
@@ -1822,6 +1933,207 @@ void rsvp_teardown_path(uint16_t tunnel_id, uint16_t lsp_id) {
     }
     LOG_INFO("Tearing down LSP [TunnelID: %u, LSPID: %u]", tunnel_id, lsp_id);
     rsvp_psb_cleanup(psb, true);
+}
+
+/* ---- rsvp_mbb_start ----------------------------------------------------- */
+
+rsvp_error_t rsvp_mbb_start(uint16_t tunnel_id, uint16_t old_lsp_id,
+                              uint16_t new_lsp_id,
+                              struct rsvp_ero_ipv4_subobj* new_ero,
+                              uint8_t ero_count) {
+    LOG_INFO("MBB: Initiating Make-Before-Break [TunnelID: %u, "
+             "old LSPID: %u → new LSPID: %u]",
+             tunnel_id, old_lsp_id, new_lsp_id);
+
+    struct rsvp_psb* old_psb = rsvp_psb_find_by_id(tunnel_id, old_lsp_id);
+    if (!old_psb) {
+        LOG_WARN("MBB: Incumbent PSB [TunnelID %u, LSPID %u] not found",
+                 tunnel_id, old_lsp_id);
+        return RSVP_ERR_NOT_FOUND;
+    }
+    if (!old_psb->is_ingress) {
+        LOG_WARN("MBB: MBB can only be initiated at the ingress node — "
+                 "TunnelID %u LSPID %u is not an ingress PSB",
+                 tunnel_id, old_lsp_id);
+        return RSVP_ERR_INVALID_PARAM;
+    }
+
+    /* Build a new path key — same session, fresh LSP-ID. */
+    struct rsvp_path_key new_key = old_psb->key;
+    new_key.sender.lsp_id = htons(new_lsp_id);
+
+    if (rsvp_psb_find(&new_key)) {
+        LOG_WARN("MBB: PSB with new LSPID %u already exists for TunnelID %u",
+                 new_lsp_id, tunnel_id);
+        return RSVP_ERR_ALREADY_EXISTS;
+    }
+
+    struct rsvp_psb* new_psb = rsvp_psb_create(&new_key);
+    if (!new_psb) {
+        LOG_ERROR("MBB: Failed to allocate new PSB [TunnelID %u, LSPID %u]",
+                  tunnel_id, new_lsp_id);
+        return RSVP_ERR_MEM_ALLOC;
+    }
+
+    /* Clone signaling parameters from the incumbent PSB. */
+    new_psb->refresh_ms    = old_psb->refresh_ms;
+    new_psb->is_ingress    = true;
+    new_psb->frr_mode      = old_psb->frr_mode;
+    new_psb->frr_bandwidth = old_psb->frr_bandwidth;
+    new_psb->setup_prio    = old_psb->setup_prio;
+    new_psb->holding_prio  = old_psb->holding_prio;
+    new_psb->ttl           = old_psb->ttl;
+    new_psb->tspec         = old_psb->tspec;
+
+    if (old_psb->lsp_name)
+        new_psb->lsp_name = strdup(old_psb->lsp_name);
+
+    /* Use caller-supplied ERO or fall back to the old PSB's ERO. */
+    if (new_ero && ero_count > 0) {
+        uint8_t cnt = (ero_count > MAX_ERO_HOPS) ? MAX_ERO_HOPS : ero_count;
+        memcpy(new_psb->ero, new_ero, cnt * sizeof(struct rsvp_ero_ipv4_subobj));
+        new_psb->ero_count = cnt;
+        LOG_DEBUG("MBB: Using %u new ERO hops for LSPID %u", cnt, new_lsp_id);
+    } else {
+        memcpy(new_psb->ero, old_psb->ero,
+               old_psb->ero_count * sizeof(struct rsvp_ero_ipv4_subobj));
+        new_psb->ero_count = old_psb->ero_count;
+        LOG_DEBUG("MBB: Inheriting %u ERO hops from old LSPID %u",
+                  new_psb->ero_count, old_lsp_id);
+    }
+
+    /* Mark as MBB pending — handle_resv_message() tears down the old path on
+     * the first RESV for this new PSB. */
+    new_psb->is_mbb_pending = true;
+    new_psb->mbb_old_lsp_id = old_lsp_id;
+
+    /* Start the ingress refresh timer so PATH messages keep flowing. */
+    uint32_t refresh_ms = get_jittered_refresh(new_psb->refresh_ms, false);
+    rsvp_timer_start(&new_psb->refresh_timer, RSVP_TIMER_REFRESH,
+                     refresh_ms, psb_refresh_timer_cb, new_psb);
+    LOG_DEBUG("MBB: Refresh timer %u ms for new LSPID %u", refresh_ms, new_lsp_id);
+
+    /* Send PATH — also resolves the egress ifindex and sets new_psb->ifindex_out. */
+    send_path_downstream(new_psb);
+
+    LOG_INFO("MBB: PATH sent for new LSP [TunnelID %u, LSPID %u] — "
+             "old LSPID %u stays active until RESV arrives",
+             tunnel_id, new_lsp_id, old_lsp_id);
+    return RSVP_SUCCESS;
+}
+
+/* ---- rsvp_frr_revert ---------------------------------------------------- */
+
+void rsvp_frr_revert(uint32_t recovered_ifindex) {
+    LOG_INFO("FRR REVERT: Interface ifindex %u has recovered — "
+             "reverting FRR-switched LSPs to original paths",
+             recovered_ifindex);
+
+    int reverted = 0;
+
+    for (int bkt = 0; bkt < 1024; bkt++) {
+        struct rsvp_psb* psb = rsvp_psb_find_by_bucket(bkt);
+        while (psb) {
+            struct rsvp_psb* next = psb->next_hash;
+
+            /* Revert only LSPs that: triggered FRR due to this interface,
+             * still have an RSB with a label, and have an original label path. */
+            if (psb->frr_active && psb->bypass_psb &&
+                psb->bypass_psb->frr_protected_ifindex == recovered_ifindex) {
+
+                struct rsvp_rsb* rsb = rsvp_rsb_find(&psb->key);
+                if (!rsb) {
+                    LOG_WARN("FRR REVERT: No RSB for TunnelID %u — skipping",
+                             ntohs(psb->key.session.tunnel_id));
+                    psb = next;
+                    continue;
+                }
+
+                struct in_addr dest_tmp   = psb->key.session.dest_addr;
+                struct in_addr orig_nh    = rsb->next_hop.neighbor_addr;
+                uint32_t       orig_if    = ntohl(rsb->next_hop.logical_interface);
+
+                LOG_INFO("FRR REVERT: Restoring TunnelID %u to original path "
+                         "[label_in=%u → label_out=%u, nexthop=%s, if=%u]",
+                         ntohs(psb->key.session.tunnel_id),
+                         rsb->label_in, rsb->label_out,
+                         inet_ntoa(orig_nh), orig_if);
+
+                /* Reprogram MPLS forwarding back to the original next-hop. */
+                hal_mpls_install(rsb->label_in, rsb->label_out,
+                                 orig_if, &orig_nh, &dest_tmp);
+
+                /* Restore the original egress ifindex. */
+                psb->ifindex_out = recovered_ifindex;
+                psb->frr_active  = false;
+
+                /* Re-send PATH without LOCAL_PROTECTION_IN_USE so peers clear
+                 * the FRR flag in their RRO. */
+                send_path_downstream(psb);
+
+                LOG_INFO("FRR REVERT: TunnelID %u reverted to primary path",
+                         ntohs(psb->key.session.tunnel_id));
+                reverted++;
+            }
+
+            psb = next;
+        }
+    }
+
+    if (reverted == 0)
+        LOG_INFO("FRR REVERT: No active FRR switchovers found for ifindex %u",
+                 recovered_ifindex);
+    else
+        LOG_INFO("FRR REVERT: Reverted %d LSP(s) to primary path for ifindex %u",
+                 reverted, recovered_ifindex);
+}
+
+/* ---- rsvp_frr_dump ------------------------------------------------------ */
+
+void rsvp_frr_dump(void) {
+    int found = 0;
+    printf("%-12s %-8s %-8s %-10s %-8s %-14s %-10s\n",
+           "TunnelID", "LSPID", "Mode", "ProtIface", "Status",
+           "Bypass TID", "BypassLabel");
+    printf("%-12s %-8s %-8s %-10s %-8s %-14s %-10s\n",
+           "--------", "-----", "----", "---------", "------",
+           "----------", "-----------");
+
+    for (int bkt = 0; bkt < 1024; bkt++) {
+        for (struct rsvp_psb* psb = rsvp_psb_find_by_bucket(bkt);
+             psb; psb = psb->next_hash) {
+            if (psb->is_bypass_tunnel) continue;
+            if (psb->frr_mode == RSVP_FRR_NONE) continue;
+
+            found++;
+            const char* mode_str   = (psb->frr_mode == RSVP_FRR_FACILITY) ?
+                                     "facility" : "1-to-1";
+            const char* status_str;
+            if (psb->frr_active)
+                status_str = "ACTIVE";
+            else if (psb->bypass_psb != NULL)
+                status_str = "armed";
+            else
+                status_str = "pending";
+
+            uint32_t bypass_label = 0;
+            if (psb->bypass_psb) {
+                struct rsvp_rsb* brsb = rsvp_rsb_find(&psb->bypass_psb->key);
+                if (brsb) bypass_label = brsb->label_out;
+            }
+
+            printf("%-12u %-8u %-8s %-10u %-8s %-14u %-10u\n",
+                   ntohs(psb->key.session.tunnel_id),
+                   ntohs(psb->key.sender.lsp_id),
+                   mode_str,
+                   psb->ifindex_out,
+                   status_str,
+                   psb->bypass_tunnel_id,
+                   bypass_label);
+        }
+    }
+    if (!found)
+        printf("No FRR-protected LSPs.\n");
 }
 
 /* ---- rsvp_state_machine_shutdown ---------------------------------------- */

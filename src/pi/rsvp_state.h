@@ -77,6 +77,10 @@ struct rsvp_psb {
     uint32_t frr_bandwidth;          /**< Bandwidth (bps) this LSP needs protected */
     uint32_t frr_protected_ifindex;  /**< Egress interface this bypass covers (0 if not a bypass) */
 
+    /* Make-Before-Break state (RFC 3209 §6.6) */
+    bool     is_mbb_pending;  /**< True: this PSB is the "new" path in a MBB operation, awaiting its first RESV */
+    uint16_t mbb_old_lsp_id;  /**< LSP-ID (host-byte order) of the incumbent path to tear down on MBB completion */
+
     /* Chaining for Hash Table */
     struct rsvp_psb* next_hash; /**< Next PSB in the same hash bucket */
     struct rsvp_psb* next_if;   /**< Next PSB sharing the same ingress interface */
