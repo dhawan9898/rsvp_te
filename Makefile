@@ -24,14 +24,6 @@ SRC    = src/main.c src/pi/rsvp_dispatcher.c src/pi/rsvp_parser.c \
 OBJ    = $(SRC:.c=.o)
 TARGET = rsvp_daemon
 
-# --- Legacy integration test (kept for backward compatibility) ---------------
-TEST_SRC    = test_rsvp.c src/pi/rsvp_parser.c src/pi/rsvp_state_db.c \
-              src/pi/rsvp_state_machine.c src/pi/label_mgr.c src/pi/rsvp_builder.c \
-              src/pi/rsvp_timers.c src/pi/rsvp_hello.c src/pi/rsvp_if.c \
-              src/common/rsvp_log.c wheel_timer/wheel_timer.c
-TEST_OBJ    = $(TEST_SRC:.c=.o)
-TEST_TARGET = test_rsvp
-
 # --- Unit / functional test suite --------------------------------------------
 # Common PI sources shared by every unit test binary (no platform-dependent PD files)
 _PI_SRCS = src/pi/rsvp_parser.c src/pi/rsvp_state_db.c src/pi/rsvp_state_machine.c \
@@ -112,7 +104,7 @@ $(UNIT_DIR)/test_mbb_frr: $(UNIT_DIR)/test_mbb_frr.c $(_PI_SRCS) \
 	$(CC) $(CFLAGS) $< $(_PI_SRCS) -o $@ $(LDFLAGS)
 
 # --- Phony targets -----------------------------------------------------------
-all: $(TARGET) $(TEST_TARGET)
+all: $(TARGET)
 
 tests: $(UNIT_TARGETS)
 
@@ -134,14 +126,11 @@ check: $(UNIT_TARGETS)
 $(TARGET): $(OBJ)
 	$(CC) $(OBJ) -o $(TARGET) $(LDFLAGS)
 
-$(TEST_TARGET): $(TEST_OBJ)
-	$(CC) $(TEST_OBJ) -o $(TEST_TARGET) $(LDFLAGS)
-
 %.o: %.c $(COMMON_HDRS) $(PI_HDRS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) $(TEST_OBJ) $(TARGET) $(TEST_TARGET) test_rsvp.o \
+	rm -f $(OBJ) $(TARGET) \
 	      $(UNIT_TARGETS) tests/test_state_machine.log tests/test_mbb_frr.log
 
 .PHONY: all tests check clean
