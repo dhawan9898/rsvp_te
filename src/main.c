@@ -74,9 +74,7 @@ int main(void) {
     LOG_WARN("RSVP-TE Daemon shutting down — sending PathTear/ResvTear for all LSPs");
     rsvp_state_machine_shutdown();
 
-    /* Release labels and timers after all PathTear/ResvTear messages have been
-     * sent (shutdown walks all PSBs and calls hal_mpls_remove for each). */
-    rsvp_timer_cleanup();
+    /* Release state after all PathTear/ResvTear messages have been sent. */
     rsvp_state_db_cleanup();
 
     LOG_INFO("RSVP-TE Daemon exited cleanly");
