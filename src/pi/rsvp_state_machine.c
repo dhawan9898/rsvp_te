@@ -162,7 +162,10 @@ static void send_path_err(struct rsvp_message_info* info,
 
     struct rsvp_error_spec_ipv4 err;
     memset(&err, 0, sizeof(err));
-    hal_netlink_get_local_addr(0, &err.error_node);
+    /* Use a local variable to avoid taking the address of a packed member. */
+    struct in_addr local_node = {0};
+    hal_netlink_get_local_addr(0, &local_node);
+    memcpy(&err.error_node, &local_node, sizeof(err.error_node));
     err.error_code  = error_code;
     err.error_value = htons(error_value);
     rsvp_builder_add_obj(&b, RSVP_CLASS_ERROR_SPEC, 1, &err, sizeof(err));
@@ -196,7 +199,9 @@ static void send_resv_err(struct rsvp_message_info* info,
 
     struct rsvp_error_spec_ipv4 err;
     memset(&err, 0, sizeof(err));
-    hal_netlink_get_local_addr(0, &err.error_node);
+    struct in_addr local_node2 = {0};
+    hal_netlink_get_local_addr(0, &local_node2);
+    memcpy(&err.error_node, &local_node2, sizeof(err.error_node));
     err.error_code  = error_code;
     err.error_value = htons(error_value);
     rsvp_builder_add_obj(&b, RSVP_CLASS_ERROR_SPEC, 1, &err, sizeof(err));
