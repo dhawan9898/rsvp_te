@@ -53,7 +53,7 @@ static void test_finalize_sets_length(void) {
     size_t len = rsvp_builder_finalize(&b);
 
     struct rsvp_common_hdr* hdr = (struct rsvp_common_hdr*)buf;
-    ASSERT_EQ((size_t)ntohs(hdr->msg_length), len, "msg_length field matches returned length");
+    ASSERT_EQ((size_t)ntohs(hdr->length), len, "length field matches returned length");
 }
 
 static void test_checksum_nonzero(void) {
@@ -64,7 +64,7 @@ static void test_checksum_nonzero(void) {
     rsvp_builder_finalize(&b);
 
     struct rsvp_common_hdr* hdr = (struct rsvp_common_hdr*)buf;
-    ASSERT_NE(hdr->cksum, 0u, "checksum is non-zero for non-trivial payload");
+    ASSERT_NE(hdr->checksum, 0u, "checksum is non-zero for non-trivial payload");
 }
 
 static void test_version_is_one(void) {
@@ -112,7 +112,7 @@ static void test_add_hop_encodes_address(void) {
     rsvp_builder_finalize(&b);
 
     /* Find PHOP object by scanning for class = RSVP_CLASS_HOP */
-    uint8_t* end = buf + ntohs(((struct rsvp_common_hdr*)buf)->msg_length);
+    uint8_t* end = buf + ntohs(((struct rsvp_common_hdr*)buf)->length);
     uint8_t* p   = buf + sizeof(struct rsvp_common_hdr);
     bool found = false;
     while (p + 4 < end) {
@@ -142,7 +142,7 @@ static void test_add_label_encodes_value(void) {
     rsvp_builder_add_label_ipv4(&b, 12345);
     rsvp_builder_finalize(&b);
 
-    uint8_t* end = buf + ntohs(((struct rsvp_common_hdr*)buf)->msg_length);
+    uint8_t* end = buf + ntohs(((struct rsvp_common_hdr*)buf)->length);
     uint8_t* p   = buf + sizeof(struct rsvp_common_hdr);
     bool found = false;
     while (p + 4 < end) {
