@@ -10,7 +10,7 @@
 #include <netinet/in.h>
 #include <stdint.h>
 
-/** @name RSVP Message Types (RFC 2205)
+/** @name RSVP Message Types (RFC 2205 / RFC 3209)
  *  @{
  */
 #define RSVP_MSG_PATH 1
@@ -21,9 +21,10 @@
 #define RSVP_MSG_RESVTEAR 6
 #define RSVP_MSG_RESVCONF 7
 #define RSVP_MSG_SREFRESH 15 /**< RFC 2961 */
+#define RSVP_MSG_HELLO    20 /**< RFC 3209 §5.3 — neighbor liveness detection */
 /** @} */
 
-/** @name RSVP Object Classes (RFC 2205 / 3209)
+/** @name RSVP Object Classes (RFC 2205 / 3209 / RFC 3209 §5.3)
  *  @{
  */
 #define RSVP_CLASS_SESSION 1
@@ -43,6 +44,14 @@
 #define RSVP_CLASS_EXPLICIT_ROUTE 20
 #define RSVP_CLASS_RECORD_ROUTE 21
 #define RSVP_CLASS_SESSION_ATTRIB 207
+#define RSVP_CLASS_HELLO          22  /**< RFC 3209 §5.3 — Hello object */
+/** @} */
+
+/** @name RSVP Hello C-Types (RFC 3209 §5.3)
+ *  @{
+ */
+#define RSVP_HELLO_CTYPE_REQUEST 1 /**< C-Type 1: Hello REQUEST — sender wants liveness state */
+#define RSVP_HELLO_CTYPE_ACK     2 /**< C-Type 2: Hello ACK — confirms liveness state */
 /** @} */
 
 /** @name RSVP Object Classes — FRR extensions (RFC 4090)
@@ -357,6 +366,17 @@ struct rsvp_session_attribute_ra {
     uint8_t flags;        /**< Flags */
     uint8_t name_length;  /**< Length of session name */
     char name[];          /**< Variable length name, padded to 4 bytes */
+} __attribute__((packed));
+
+/**
+ * @brief HELLO Object (RFC 3209 §5.3, Class 22, C-Type 1 or 2).
+ * @details Carried in HELLO messages exchanged between adjacent RSVP nodes.
+ *          src_instance is the sender's unique per-node identifier (non-zero, changes on restart).
+ *          dst_instance is the last src_instance received from the peer (0 if not yet seen).
+ */
+struct rsvp_hello_obj {
+    uint32_t src_instance; /**< Sender's instance identifier */
+    uint32_t dst_instance; /**< Last received instance from the peer (0 if unknown) */
 } __attribute__((packed));
 
 #endif /* RSVP_PROTOCOL_H */

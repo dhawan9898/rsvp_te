@@ -265,6 +265,15 @@ int rsvp_builder_add_adspec(struct rsvp_builder* b, struct rsvp_adspec* adspec) 
                                 sizeof(struct rsvp_adspec) + body_len);
 }
 
+int rsvp_builder_add_hello(struct rsvp_builder* b, uint32_t src_instance,
+                            uint32_t dst_instance, uint8_t c_type) {
+    if (!b) return RSVP_ERR_INVALID_PARAM;
+    struct rsvp_hello_obj obj;
+    obj.src_instance = htonl(src_instance);
+    obj.dst_instance = htonl(dst_instance);
+    return rsvp_builder_add_obj(b, RSVP_CLASS_HELLO, c_type, &obj, sizeof(obj));
+}
+
 int rsvp_builder_add_ero(struct rsvp_builder* b, struct rsvp_ero_ipv4_subobj* ero_list, size_t count) {
     if (!b || !ero_list || count == 0) return RSVP_ERR_INVALID_PARAM;
     size_t obj_len = count * sizeof(struct rsvp_ero_ipv4_subobj);

@@ -49,6 +49,8 @@ struct rsvp_message_info {
     struct rsvp_session_attribute_ra* sess_attr_ra;
     struct rsvp_fast_reroute* fast_reroute; /**< FAST_REROUTE object if present (RFC 4090) */
     struct rsvp_detour_ipv4* detour;        /**< DETOUR object if present (RFC 4090) */
+    struct rsvp_hello_obj*   hello_obj;     /**< HELLO object if present (RFC 3209 §5.3) */
+    uint8_t                  hello_ctype;   /**< C-Type of the HELLO object (1=REQUEST, 2=ACK) */
     char lsp_name[256];                     /**< Extracted LSP tunnel name from SESSION_ATTRIBUTE */
 };
 

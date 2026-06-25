@@ -14,6 +14,8 @@
 
 #include "common/rsvp_log.h"
 #include "hal/hal_netlink.h"
+#include "rsvp_hello.h"
+#include "rsvp_if.h"
 #include "rsvp_state_db.h"
 #include "rsvp_state_machine.h"
 
@@ -45,10 +47,116 @@ int rsvp_cli_handle_input(int fd) {
     /* Process the command based on string matching */
     if (strcmp(buf, "show psb") == 0) {
         rsvp_psb_dump();
+
     } else if (strcmp(buf, "show rsb") == 0) {
         rsvp_rsb_dump();
+
     } else if (strcmp(buf, "show mpls routes") == 0) {
         hal_mpls_dump();
+
+    /* ---- RSVP Hello / neighbor commands --------------------------------- */
+    } else if (strcmp(buf, "show rsvp neighbors") == 0) {
+        rsvp_hello_dump();
+
+    /* ---- RSVP interface commands ---------------------------------------- */
+    } else if (strcmp(buf, "show rsvp interfaces") == 0) {
+        rsvp_if_dump();
+
+    } else if (strncmp(buf, "show rsvp interface ", 20) == 0) {
+        rsvp_if_dump_one(buf + 20);
+
+    } else if (strncmp(buf, "interface ", 10) == 0) {
+        /* Format: interface <name> rsvp enable|disable
+         *         interface <name> bandwidth <Mbps>
+         *         interface <name> reservable-bandwidth <Mbps>
+         *         interface <name> hello-interval <ms>
+         *         interface <name> rsvp neighbor <neighbor_ip>
+         */
+        char if_name[IF_NAMESIZE] = {0};
+        char subcmd[64] = {0};
+        if (sscanf(buf + 10, "%15s %63s", if_name, subcmd) < 2) {
+            printf("Usage: interface <name> <subcommand>\n");
+            goto done;
+        }
+
+        if (strcmp(subcmd, "rsvp") == 0) {
+            char action[16] = {0};
+            if (sscanf(buf + 10, "%15s rsvp %15s", if_name, action) == 2) {
+                if (strcmp(action, "enable") == 0) {
+                    if (rsvp_if_enable(if_name))
+                        printf("RSVP enabled on %s\n", if_name);
+                } else if (strcmp(action, "disable") == 0) {
+                    rsvp_if_disable(if_name);
+                    printf("RSVP disabled on %s\n", if_name);
+                } else if (strcmp(action, "neighbor") == 0) {
+                    /* interface <name> rsvp neighbor <ip> */
+                    char nbor_str[INET_ADDRSTRLEN] = {0};
+                    if (sscanf(buf + 10, "%15s rsvp neighbor %45s", if_name, nbor_str) == 2) {
+                        struct in_addr nbor_addr = {0}, local_addr = {0};
+                        if (inet_pton(AF_INET, nbor_str, &nbor_addr) != 1) {
+                            printf("Invalid IP address: %s\n", nbor_str);
+                            goto done;
+                        }
+                        struct rsvp_if* iface = rsvp_if_get_by_name(if_name);
+                        unsigned int idx = (iface && iface->ifindex) ? (unsigned int)iface->ifindex : 0;
+                        hal_netlink_get_local_addr((int)idx, &local_addr);
+                        struct rsvp_neighbor* n = rsvp_hello_add_neighbor(&nbor_addr, &local_addr, idx);
+                        if (n)
+                            printf("Tracking RSVP neighbor %s on %s — Hello interval %u ms\n",
+                                   nbor_str, if_name, n->hello_interval_ms);
+                    } else {
+                        printf("Usage: interface <name> rsvp neighbor <ip>\n");
+                    }
+                } else {
+                    printf("Usage: interface <name> rsvp enable|disable|neighbor <ip>\n");
+                }
+            } else {
+                printf("Usage: interface <name> rsvp enable|disable|neighbor <ip>\n");
+            }
+
+        } else if (strcmp(subcmd, "bandwidth") == 0) {
+            double mbps = 0.0;
+            if (sscanf(buf + 10, "%15s bandwidth %lf", if_name, &mbps) == 2) {
+                rsvp_if_set_bandwidth(if_name, mbps * 1e6, mbps * 1e6);
+                printf("Interface %s: total/reservable bandwidth set to %.2f Mbps\n", if_name, mbps);
+            } else {
+                printf("Usage: interface <name> bandwidth <Mbps>\n");
+            }
+
+        } else if (strcmp(subcmd, "reservable-bandwidth") == 0) {
+            double mbps = 0.0;
+            if (sscanf(buf + 10, "%15s reservable-bandwidth %lf", if_name, &mbps) == 2) {
+                struct rsvp_if* iface = rsvp_if_get_by_name(if_name);
+                double total = iface ? iface->total_bw : mbps * 1e6;
+                rsvp_if_set_bandwidth(if_name, total, mbps * 1e6);
+                printf("Interface %s: reservable bandwidth set to %.2f Mbps\n", if_name, mbps);
+            } else {
+                printf("Usage: interface <name> reservable-bandwidth <Mbps>\n");
+            }
+
+        } else if (strcmp(subcmd, "hello-interval") == 0) {
+            unsigned int ms = 0;
+            if (sscanf(buf + 10, "%15s hello-interval %u", if_name, &ms) == 2 && ms > 0) {
+                /* rsvp_if_enable() finds or creates the entry */
+                struct rsvp_if* iface = rsvp_if_enable(if_name);
+                if (iface) {
+                    iface->hello_interval_ms = ms;
+                    printf("Interface %s: Hello interval set to %u ms\n", if_name, ms);
+                }
+            } else {
+                printf("Usage: interface <name> hello-interval <ms>\n");
+            }
+
+        } else {
+            printf("Unknown sub-command: %s\n", subcmd);
+            printf("  interface <name> rsvp enable|disable\n");
+            printf("  interface <name> rsvp neighbor <ip>\n");
+            printf("  interface <name> bandwidth <Mbps>\n");
+            printf("  interface <name> reservable-bandwidth <Mbps>\n");
+            printf("  interface <name> hello-interval <ms>\n");
+        }
+
+    /* ---- Tunnel commands ------------------------------------------------ */
     } else if (strncmp(buf, "delete tunnel ", 14) == 0) {
         uint32_t tunnel_id = 0, lsp_id = 0;
         if (sscanf(buf + 14, "%u %u", &tunnel_id, &lsp_id) == 2) {
@@ -56,11 +164,11 @@ int rsvp_cli_handle_input(int fd) {
         } else {
             printf("Usage: delete tunnel <tunnel_id> <lsp_id>\n");
         }
+
     } else if (strncmp(buf, "setup tunnel ", 13) == 0) {
         /* Format: setup tunnel <src_ip> <dest_ip> <tunnel_id> <name> */
         char src_str[32], dest_str[32], name[32];
         uint32_t tunnel_id = 0;
-        
         if (sscanf(buf + 13, "%31s %31s %u %31s", src_str, dest_str, &tunnel_id, name) == 4) {
             struct in_addr src, dest;
             if (inet_pton(AF_INET, src_str, &src) && inet_pton(AF_INET, dest_str, &dest)) {
@@ -72,36 +180,26 @@ int rsvp_cli_handle_input(int fd) {
         } else {
             printf("Usage: setup tunnel <src_ip> <dest_ip> <tunnel_id> <name>\n");
         }
-    } else if (strncmp(buf, "ping ", 5) == 0) {
-        /* Format: ping <src_ip> <dest_ip> <count> */
-        char src_str[32], dest_str[32];
-        int count = 0;
-        if (sscanf(buf + 5, "%31s %31s %d", src_str, dest_str, &count) == 3) {
-            if (count <= 0 || count > 100) {
-                printf("Invalid count. Must be between 1 and 100.\n");
-            } else {
-                char cmd[256];
-                snprintf(cmd, sizeof(cmd), "ping -I %s -c %d %s", src_str, count, dest_str);
-                printf("Running ping to verify labels: %s\n", cmd);
-                fflush(stdout);
-                int ret = system(cmd);
-                if (ret < 0) {
-                    printf("Failed to execute ping command.\n");
-                }
-            }
-        } else {
-            printf("Usage: ping <src_ip> <dest_ip> <count>\n");
-        }
+
     } else if (strlen(buf) > 0) {
         printf("Unknown command: %s\n", buf);
         printf("Available commands:\n");
         printf("  show psb\n");
         printf("  show rsb\n");
         printf("  show mpls routes\n");
+        printf("  show rsvp neighbors\n");
+        printf("  show rsvp interfaces\n");
+        printf("  show rsvp interface <name>\n");
+        printf("  interface <name> rsvp enable|disable\n");
+        printf("  interface <name> rsvp neighbor <ip>\n");
+        printf("  interface <name> bandwidth <Mbps>\n");
+        printf("  interface <name> reservable-bandwidth <Mbps>\n");
+        printf("  interface <name> hello-interval <ms>\n");
         printf("  setup tunnel <src_ip> <dest_ip> <tunnel_id> <name>\n");
         printf("  delete tunnel <tunnel_id> <lsp_id>\n");
-        printf("  ping <src_ip> <dest_ip> <count>\n");
     }
+
+done:
 
     rsvp_cli_print_prompt();
     return 0;
